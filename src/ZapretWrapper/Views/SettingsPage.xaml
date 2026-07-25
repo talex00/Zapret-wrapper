@@ -1,11 +1,11 @@
 <UserControl x:Class="ZapretWrapper.Views.SettingsPage"
-      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      xmlns:styles="clr-namespace:ZapretWrapper.Styles"
-     >
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:styles="clr-namespace:ZapretWrapper.Styles">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
         <StackPanel MaxWidth="800" HorizontalAlignment="Left">
 
+            <!-- Внешний вид -->
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Внешний вид"
@@ -23,21 +23,92 @@
                 </StackPanel>
             </Border>
 
+            <!-- Путь к zapret2 -->
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <StackPanel>
-                    <TextBlock Text="Zapret2"
+                    <TextBlock Text="Путь к zapret2"
                                Style="{StaticResource TextCardTitleStyle}" />
-                    <TextBlock Text="Путь к папке zapret2 (заглушка)."
-                               Style="{StaticResource TextMutedStyle}" />
+                    <TextBlock Style="{StaticResource TextMutedStyle}"
+                               Text="Укажите папку, куда вы распаковали zapret-win-bundle или zapret2. Внутри должны быть binaries/windows-x86_64/winws2.exe, lua/, files/fake/."
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,12" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ZapretPathBox"
+                                 Grid.Column="0"
+                                 IsReadOnly="True" />
+                        <Button Grid.Column="2"
+                                Content="Обзор..."
+                                Click="Browse_Click"
+                                Padding="14,6" />
+                    </Grid>
+
+                    <Border x:Name="ValidationPanel"
+                            Margin="0,12,0,0"
+                            Padding="12"
+                            CornerRadius="4"
+                            BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock x:Name="ValidationTitle"
+                                       FontWeight="SemiBold" />
+                            <ItemsControl x:Name="ValidationList" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+                                            <TextBlock Text="•" Margin="0,0,6,0" />
+                                            <TextBlock Text="{Binding}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Button Content="Сохранить"
+                            Margin="0,16,0,0"
+                            HorizontalAlignment="Left"
+                            Padding="20,8"
+                            Click="Save_Click" />
                 </StackPanel>
             </Border>
 
+            <!-- Домены для теста -->
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Домены для тестирования"
+                               Style="{StaticResource TextCardTitleStyle}" />
+                    <TextBlock Style="{StaticResource TextMutedStyle}"
+                               Text="Через запятую. Если пусто — используются дефолтные: youtube.com, discord.com, instagram.com, twitch.tv."
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,12" />
+                    <TextBox x:Name="TestDomainsBox"
+                             Text=""
+                             AcceptsReturn="False" />
+                    <Button Content="Сохранить"
+                            Margin="0,12,0,0"
+                            HorizontalAlignment="Left"
+                            Padding="20,8"
+                            Click="SaveDomains_Click" />
+                </StackPanel>
+            </Border>
+
+            <!-- О программе -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel>
                     <TextBlock Text="О программе"
                                Style="{StaticResource TextCardTitleStyle}" />
                     <TextBlock Text="ZapretWrapper v0.1 — GUI-обёртка для zapret2."
                                Style="{StaticResource TextMutedStyle}" />
+                    <TextBlock Style="{StaticResource TextMutedStyle}"
+                               Margin="0,4,0,0">
+                        <Run Text="Конфиг: " />
+                        <Run x:Name="ConfigPathRun" />
+                    </TextBlock>
                 </StackPanel>
             </Border>
         </StackPanel>

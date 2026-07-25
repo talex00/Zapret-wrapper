@@ -10,45 +10,42 @@
                     <TextBlock Text="Быстрый запуск"
                                Style="{StaticResource TextCardTitleStyle}" />
 
-                    <TextBlock Text="Выберите стратегии:"
+                    <TextBlock Text="Выберите стратегию:"
                                Style="{StaticResource TextLabelStyle}" />
-                    <ComboBox x:Name="StrategyCombo">
-                        <ComboBoxItem Content="auto_qq" IsSelected="True" />
-                        <ComboBoxItem Content="discord_auto" />
-                        <ComboBoxItem Content="youtube_qq" />
-                        <ComboBoxItem Content="general_tcp" />
-                        <ComboBoxItem Content="udp_fragment" />
-                        <ComboBoxItem Content="tls_fake_sni" />
+                    <ComboBox x:Name="StrategyCombo"
+                              SelectionChanged="StrategyCombo_SelectionChanged">
+                        <ComboBoxItem Content="auto_qq (Рекомендуется)" Tag="auto_qq" IsSelected="True" />
+                        <ComboBoxItem Content="youtube_qq" Tag="youtube_qq" />
+                        <ComboBoxItem Content="general_tcp" Tag="general_tcp" />
+                        <ComboBoxItem Content="udp_fragment" Tag="udp_fragment" />
+                        <ComboBoxItem Content="tls_fake_sni" Tag="tls_fake_sni" />
                     </ComboBox>
 
                     <TextBlock Text="Целевые ресурсы:"
                                Style="{StaticResource TextLabelStyle}"
                                Margin="0,16,0,8" />
-                    <WrapPanel>
-                        <Border Style="{StaticResource PillBorderStyle}">
-                            <TextBlock Text="youtube.com" />
-                        </Border>
-                        <Border Style="{StaticResource PillBorderStyle}">
-                            <TextBlock Text="discord.com" />
-                        </Border>
-                        <Border Style="{StaticResource PillBorderStyle}">
-                            <TextBlock Text="twitch.tv" />
-                        </Border>
-                        <Border Style="{StaticResource PillBorderStyle}">
-                            <TextBlock Text="instagram.com" />
-                        </Border>
-                    </WrapPanel>
+                    <WrapPanel x:Name="TargetResourcesPanel" />
 
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="12" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0"
-                                Content="Запустить обход" />
+                                x:Name="StartButton"
+                                Content="▶  Запустить обход"
+                                Click="Start_Click" />
                         <Button Grid.Column="2"
-                                Content="Остановить" />
+                                x:Name="StopButton"
+                                Content="■  Остановить"
+                                Click="Stop_Click" />
+                        <Button Grid.Column="4"
+                                x:Name="TestButton"
+                                Content="🔍  Тест всех"
+                                Click="TestAll_Click" />
                     </Grid>
                 </StackPanel>
             </Border>
@@ -67,22 +64,22 @@
                         </Grid.ColumnDefinitions>
 
                         <Grid Grid.Column="0" Margin="8">
-                            <ctrl:MetricRing Value="42"
-                                             Caption="Пинг: 42 мс"
+                            <ctrl:MetricRing Value="—"
+                                             Caption="Пинг"
                                              ArcBrush="{DynamicResource PingBrush}"
-                                             Progress="0.42" />
+                                             Progress="0" />
                         </Grid>
                         <Grid Grid.Column="1" Margin="8">
-                            <ctrl:MetricRing Value="0"
-                                             Caption="Потери: 0%"
+                            <ctrl:MetricRing Value="—"
+                                             Caption="Потери"
                                              ArcBrush="{DynamicResource LossBrush}"
                                              Progress="0" />
                         </Grid>
                         <Grid Grid.Column="2" Margin="8">
-                            <ctrl:MetricRing Value="94"
-                                             Caption="Скорость: 94 Мбит/с"
+                            <ctrl:MetricRing Value="—"
+                                             Caption="Скорость"
                                              ArcBrush="{DynamicResource SpeedBrush}"
-                                             Progress="0.94" />
+                                             Progress="0" />
                         </Grid>
                     </Grid>
                 </DockPanel>
@@ -100,10 +97,12 @@
                                    Text="Результаты тестирования"
                                    Style="{StaticResource TextCardTitleStyle}"
                                    Margin="0" />
-                        <Button Grid.Column="1"
-                                Style="{StaticResource SubtleButtonStyle}"
-                                Content="Запустить тест всех"
-                                Margin="0,0,0,12" />
+                        <TextBlock x:Name="BestStrategyText"
+                                   Grid.Column="1"
+                                   Text=""
+                                   Foreground="{DynamicResource SuccessBrush}"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
                     </Grid>
 
                     <DataGrid x:Name="ResultsGrid">
@@ -175,10 +174,10 @@
                             <DataGridTextColumn Header="Пинг (мс)"
                                                 Binding="{Binding PingText}"
                                                 Width="0.8*" />
-                            <DataGridTextColumn Header="Потери (%)"
+                            <DataGridTextColumn Header="Успех"
                                                 Binding="{Binding LossText}"
                                                 Width="0.8*" />
-                            <DataGridTextColumn Header="Скорость (Мбит/с)"
+                            <DataGridTextColumn Header="Среднее (мс)"
                                                 Binding="{Binding SpeedText}"
                                                 Width="1.1*" />
                         </DataGrid.Columns>
@@ -198,12 +197,10 @@
                                    Text="Журнал событий"
                                    Style="{StaticResource TextCardTitleStyle}"
                                    Margin="0" />
-                        <TextBlock Grid.Column="1"
-                                   Text="L"
-                                   FontSize="16"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   Margin="0,0,0,12"
-                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                Content="Очистить"
+                                Click="ClearLog_Click" />
                     </Grid>
 
                     <Border Background="{DynamicResource SurfaceAltBrush}"
@@ -213,29 +210,9 @@
                             Padding="12">
                         <ScrollViewer x:Name="LogScroll"
                                       VerticalScrollBarVisibility="Auto"
-                                      Background="Transparent">
-                            <StackPanel>
-                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
-                                    <Run Foreground="{DynamicResource AccentBrush}" Text="[INFO]   " />
-                                    <Run Foreground="{DynamicResource TextBrush}" Text="Инициализация тестирования..." />
-                                </TextBlock>
-                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
-                                    <Run Foreground="{DynamicResource AccentBrush}" Text="[INFO]   " />
-                                    <Run Foreground="{DynamicResource TextBrush}" Text="Проверка стратегии 'discord_auto'..." />
-                                </TextBlock>
-                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
-                                    <Run Foreground="{DynamicResource SuccessBrush}" Text="[SUCCESS]" />
-                                    <Run Foreground="{DynamicResource TextBrush}" Text=" 'discord_auto' успешно прошла проверку." />
-                                </TextBlock>
-                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
-                                    <Run Foreground="{DynamicResource WarnBrush}" Text="[WARN]   " />
-                                    <Run Foreground="{DynamicResource TextBrush}" Text=" 'general_tcp' не получила ответ от сервера." />
-                                </TextBlock>
-                                <TextBlock FontFamily="Consolas" FontSize="12">
-                                    <Run Foreground="{DynamicResource AccentBrush}" Text="[INFO]   " />
-                                    <Run Foreground="{DynamicResource TextBrush}" Text="Переход к следующей стратегии..." />
-                                </TextBlock>
-                            </StackPanel>
+                                      Background="Transparent"
+                                      MaxHeight="240">
+                            <StackPanel x:Name="LogPanel" />
                         </ScrollViewer>
                     </Border>
                 </DockPanel>

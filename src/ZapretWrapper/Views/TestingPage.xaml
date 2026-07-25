@@ -1,18 +1,24 @@
 <UserControl x:Class="ZapretWrapper.Views.TestingPage"
-      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-     >
-    <Grid>
-        <Border Style="{StaticResource CardBorderStyle}"
-                Margin="20"
-                VerticalAlignment="Top"
-                HorizontalAlignment="Stretch">
-            <StackPanel>
-                <TextBlock Text="Тестирование"
-                           Style="{StaticResource TextCardTitleStyle}" />
-                <TextBlock Text="Здесь будет мастер подбора стратегий (blockcheck)."
-                           Style="{StaticResource TextMutedStyle}" />
-            </StackPanel>
-        </Border>
-    </Grid>
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+        <StackPanel MaxWidth="800" HorizontalAlignment="Left">
+            <TextBlock Text="Тестирование стратегий"
+                       Style="{StaticResource TextCardTitleStyle}" />
+            <TextBlock Style="{StaticResource TextMutedStyle}"
+                       Text="Мастер подбора стратегии. Запустите тест на главной странице — лучшая стратегия будет выбрана автоматически."
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,16" />
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="Что делает тестер"
+                               FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <TextBlock Style="{StaticResource TextMutedStyle}"
+                               TextWrapping="Wrap"
+                               Text="Тестер поочерёдно запускает каждую стратегию и делает HEAD-запросы к списку доменов. Стратегия, прошедшая все проверки, считается лучшей. Тест занимает 1-2 минуты." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

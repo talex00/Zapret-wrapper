@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using ZapretWrapper.Services;
 using ZapretWrapper.Styles;
 using ZapretWrapper.Views;
 
@@ -69,5 +70,28 @@ public partial class MainWindow : Window
         };
 
         PageHost.Content = target;
+    }
+
+    /// <summary>Обновляет шапку (статус + профиль) из App.Runner.</summary>
+    public void RefreshStatus()
+    {
+        var runner = App.Runner;
+        if (runner is null) return;
+
+        if (runner.IsRunning)
+        {
+            StatusDot.Fill = (System.Windows.Media.Brush)FindResource("SuccessBrush");
+            StatusText.Text = "Работает";
+            StatusText.Foreground = (System.Windows.Media.Brush)FindResource("SuccessBrush");
+            var running = Models.StrategyCatalog.FindById(SettingsService.Current.SelectedStrategyId);
+            ProfileText.Text = running?.Name ?? "—";
+        }
+        else
+        {
+            StatusDot.Fill = (System.Windows.Media.Brush)FindResource("DangerBrush");
+            StatusText.Text = "Остановлено";
+            StatusText.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+            ProfileText.Text = "Без обхода";
+        }
     }
 }
