@@ -5,21 +5,21 @@ public enum TestStatus
     Pending,
     Running,
     Success,
+    Partial,
     Failure,
 }
 
 /// <summary>
-/// Строка таблицы результатов теста стратегии на главной странице. Раньше наследовалась от
-/// ViewModelBase, но использовала простые auto-свойства — PropertyChanged никогда не вызывался,
-/// и DataGrid на главной странице не обновлялся во время теста.
+/// Строка таблицы результатов. Все свойства уведомляют об изменении — иначе DataGrid
+/// не перерисовывался бы по ходу теста (именно из-за этого таблица раньше оставалась пустой).
 /// </summary>
 public class StrategyTestRow : ViewModelBase
 {
     private string _name = "";
     private TestStatus _status = TestStatus.Pending;
     private int? _ping;
-    private double? _loss;
-    private double? _speed;
+    private double? _successRate;
+    private string _details = "";
 
     public string Name
     {
@@ -37,7 +37,7 @@ public class StrategyTestRow : ViewModelBase
         }
     }
 
-    /// <summary>Средняя задержка успешных ответов, мс.</summary>
+    /// <summary>Средняя задержка успешных проб, мс.</summary>
     public int? Ping
     {
         get => _ping;
@@ -48,37 +48,41 @@ public class StrategyTestRow : ViewModelBase
         }
     }
 
-    /// <summary>Доля успешных попыток, %. Название историческое, в UI отображается как «Успех».</summary>
-    public double? Loss
+    /// <summary>Доля пройденных критичных проверок, %.</summary>
+    public double? SuccessRate
     {
-        get => _loss;
+        get => _successRate;
         set
         {
-            if (SetField(ref _loss, value))
-                OnPropertyChanged(nameof(LossText));
+            if (SetField(ref _successRate, value))
+                OnPropertyChanged(nameof(SuccessText));
         }
     }
 
-    /// <summary>Средняя задержка по всем успешным ответам, мс.</summary>
-    public double? Speed
+    /// <summary>Что именно не прошло, либо текущая выполняемая проба.</summary>
+    public string Details
     {
-        get => _speed;
-        set
-        {
-            if (SetField(ref _speed, value))
-                OnPropertyChanged(nameof(SpeedText));
-        }
+        get => _details;
+        set => SetField(ref _details, value);
     }
 
     public string StatusText => Status switch
     {
         TestStatus.Running => "Тестирование…",
-        TestStatus.Success => "Успешно",
-        TestStatus.Failure => "Ошибка",
+        TestStatus.Success => "Работает",
+        TestStatus.Partial => "Частично",
+        TestStatus.Failure => "Не работает",
         _ => "Ожидание",
     };
 
     public string PingText => Ping is null ? "—" : $"{Ping} мс";
-    public string LossText => Loss is null ? "—" : $"{Loss:0}%";
-    public string SpeedText => Speed is null ? "—" : $"{Speed:0} мс";
+    public string SuccessText => SuccessRate is null ? "—" : $"{SuccessRate:0}%";
+
+    public void Reset()
+    {
+        Status = TestStatus.Pending;
+        Ping = null;
+        SuccessRate = null;
+        Details = "";
+    }
 }

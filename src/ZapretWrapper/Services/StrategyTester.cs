@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using ZapretWrapper.Models;
@@ -10,22 +8,37 @@ using ZapretWrapper.Models;
 namespace ZapretWrapper.Services;
 
 /// <summary>
-/// Прогоняет одну стратегию через единственный ZapretRunner и пробует список тестовых
-/// доменов. Так как winws2 — один процесс на всё приложение, вызывающий код должен
-/// тестировать стратегии последовательно (один RunAsync за раз).
+/// Прогоняет стратегии по набору целей. winws2 — один процесс на всё приложение, поэтому
+/// стратегии тестируются строго по очереди: запуск → пробы → остановка.
 /// </summary>
 public class StrategyTester
 {
     public class StrategyTestOutcome
     {
-        public Strategy Strategy { get; init; } = null!;
+        public Strategy? Strategy { get; init; }
+        public string Name { get; init; } = "";
         public int Successes { get; init; }
         public int Total { get; init; }
         public TimeSpan AverageLatency { get; init; }
         public string? Error { get; init; }
+        public IReadOnlyList<ProbeResult> Results { get; init; } = Array.Empty<ProbeResult>();
+
+        public double SuccessRate => Total > 0 ? 100.0 * Successes / Total : 0;
+
+        /// <summary>Короткий список того, что не прошло — это и показывается в таблице.</summary>
+        public string FailedSummary
+        {
+            get
+            {
+                if (Error is not null) return Error;
+                var failed = Results.Where(r => !r.Ok).Select(r => r.Spec.Title).ToList();
+                return failed.Count == 0 ? "Все проверки пройдены" : string.Join("; ", failed);
+            }
+        }
     }
 
-    public readonly record struct StrategyTestProgress(int Completed, int Total, string Domain, bool Success);
+    public readonly record struct StrategyTestProgress(
+        string StrategyName, string ProbeTitle, int Completed, int Total, bool Ok);
 
     private readonly ZapretRunner _runner;
 
@@ -34,108 +47,111 @@ public class StrategyTester
         _runner = runner;
     }
 
+    /// <summary>
+    /// Замер без обхода. Нужен как база сравнения: если ресурс недоступен и без zapret, и с ним —
+    /// проблема не в стратегии, а в сети или в самом ресурсе.
+    /// </summary>
+    public Task<StrategyTestOutcome> RunBaselineAsync(
+        IReadOnlyList<CheckTarget> targets,
+        int timeoutSeconds = 6,
+        IProgress<StrategyTestProgress>? progress = null,
+        CancellationToken ct = default)
+        => ProbeAllAsync(null, "Без обхода", targets, timeoutSeconds, progress, ct);
+
     public async Task<StrategyTestOutcome> RunAsync(
         Strategy strategy,
-        IEnumerable<string> domains,
-        int attemptsPerDomain = 2,
-        int timeoutSeconds = 5,
+        IReadOnlyList<CheckTarget> targets,
+        int timeoutSeconds = 6,
         IProgress<StrategyTestProgress>? progress = null,
         CancellationToken ct = default)
     {
-        var domainList = domains as IList<string> ?? domains.ToList();
-        var totalAttempts = domainList.Count * attemptsPerDomain;
-
-        var started = _runner.Start(strategy);
-        if (!started)
+        if (!_runner.Start(strategy))
         {
             return new StrategyTestOutcome
             {
                 Strategy = strategy,
+                Name = strategy.Name,
                 Successes = 0,
-                Total = totalAttempts,
-                AverageLatency = TimeSpan.Zero,
-                Error = _runner.LastError ?? "Не удалось запустить стратегию",
+                Total = CountCritical(targets),
+                Error = _runner.LastError ?? "не удалось запустить winws2",
             };
         }
 
-        var latencies = new List<double>();
-        int successes = 0;
-        int total = 0;
-        string? error = null;
-
         try
         {
-            // Даём WinDivert время поставить фильтр перед первым запросом.
             await _runner.WaitUntilReadyAsync(SettingsService.Current.StartupDelayMs, ct);
 
-            foreach (var domain in domainList)
+            if (!_runner.IsRunning)
             {
-                for (int attempt = 0; attempt < attemptsPerDomain; attempt++)
+                return new StrategyTestOutcome
                 {
-                    ct.ThrowIfCancellationRequested();
-                    total++;
-
-                    var (ok, ms) = await ProbeAsync(domain, timeoutSeconds, ct);
-                    if (ok)
-                    {
-                        successes++;
-                        latencies.Add(ms);
-                    }
-
-                    progress?.Report(new StrategyTestProgress(total, totalAttempts, domain, ok));
-                }
+                    Strategy = strategy,
+                    Name = strategy.Name,
+                    Successes = 0,
+                    Total = CountCritical(targets),
+                    Error = "winws2 завершился сразу после запуска (см. журнал)",
+                };
             }
-        }
-        catch (OperationCanceledException)
-        {
-            error = "Отменено";
+
+            return await ProbeAllAsync(strategy, strategy.Name, targets, timeoutSeconds, progress, ct);
         }
         finally
         {
             _runner.Stop();
         }
+    }
+
+    private static int CountCritical(IReadOnlyList<CheckTarget> targets) =>
+        targets.SelectMany(t => t.Probes).Count(p => p.Critical);
+
+    private static async Task<StrategyTestOutcome> ProbeAllAsync(
+        Strategy? strategy,
+        string name,
+        IReadOnlyList<CheckTarget> targets,
+        int timeoutSeconds,
+        IProgress<StrategyTestProgress>? progress,
+        CancellationToken ct)
+    {
+        var specs = targets.SelectMany(t => t.Probes).ToList();
+        var results = new List<ProbeResult>();
+        string? error = null;
+
+        try
+        {
+            foreach (var spec in specs)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var result = await NetProbe.RunAsync(spec, timeoutSeconds, ct);
+                results.Add(result);
+
+                if (result.Ok)
+                    LogService.Debug($"[{name}] {spec.Title}: OK, {result.Ms:0} мс");
+                else
+                    LogService.Warn($"[{name}] {spec.Title}: {result.Error}");
+
+                progress?.Report(new StrategyTestProgress(name, spec.Title, results.Count, specs.Count, result.Ok));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            error = "отменено";
+        }
+
+        var critical = results.Where(r => r.Spec.Critical).ToList();
+        var latencies = results.Where(r => r.Ok).Select(r => r.Ms).ToList();
 
         return new StrategyTestOutcome
         {
             Strategy = strategy,
-            Successes = successes,
-            Total = total,
-            AverageLatency = latencies.Count > 0 ? TimeSpan.FromMilliseconds(latencies.Average()) : TimeSpan.Zero,
+            Name = name,
+            Successes = critical.Count(r => r.Ok),
+            Total = critical.Count,
+            AverageLatency = latencies.Count > 0
+                ? TimeSpan.FromMilliseconds(latencies.Average())
+                : TimeSpan.Zero,
             Error = error,
+            Results = results,
         };
-    }
-
-    private static async Task<(bool ok, double ms)> ProbeAsync(string domain, int timeoutSeconds, CancellationToken ct)
-    {
-        // Раньше здесь было "{https://" + domain + "}/" (с буквальными фигурными скобками),
-        // что бросало UriFormatException на каждом запросе. Просто строим обычный https URL.
-        var url = domain.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            ? domain
-            : "https://" + domain + "/";
-
-        using var handler = new SocketsHttpHandler
-        {
-            ConnectTimeout = TimeSpan.FromSeconds(timeoutSeconds),
-            AllowAutoRedirect = true,
-        };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
-
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-            sw.Stop();
-            var ok = (int)response.StatusCode < 500;
-            return (ok, sw.Elapsed.TotalMilliseconds);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            sw.Stop();
-            return (false, sw.Elapsed.TotalMilliseconds);
-        }
     }
 }
