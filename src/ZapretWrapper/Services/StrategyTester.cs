@@ -107,11 +107,11 @@ public class StrategyTester
 
     private static async Task<(bool ok, double ms)> ProbeAsync(string domain, int timeoutSeconds, CancellationToken ct)
     {
-        // Баг: раньше здесь было $"{{https://{domain}}}/", что давало буквально строку
-        // "{https://youtube.com}/" и падало с UriFormatException на каждом запросе.
+        // Раньше здесь было "{https://" + domain + "}/" (с буквальными фигурными скобками),
+        // что бросало UriFormatException на каждом запросе. Просто строим обычный https URL.
         var url = domain.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             ? domain
-            : $"https://{domain}/";
+            : "https://" + domain + "/";
 
         using var handler = new SocketsHttpHandler
         {
