@@ -35,7 +35,7 @@ public static class TargetCatalog
             Probes = new List<ProbeSpec>
             {
                 new("Discord — текст/API (HTTPS)", ProbeKind.Http, "discord.com", 443, "https://discord.com/api/v9/gateway"),
-                // Голосовой чат = сигналинг по WSS +媒 медиапоток по UDP. Проверяем оба.
+                // Голосовой чат = сигналинг по WSS + медиапоток по UDP. Проверяем оба.
                 new("Discord — голос: сигналинг (TLS)", ProbeKind.Tls, "gateway.discord.gg"),
                 new("Discord — голос: UDP/RTP (STUN)", ProbeKind.UdpStun, "stun.l.google.com", 19302),
                 new("Discord — картинки/CDN (TLS)", ProbeKind.Tls, "cdn.discordapp.com", 443, null, 400, false),
