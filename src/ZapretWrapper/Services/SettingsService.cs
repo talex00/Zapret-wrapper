@@ -5,66 +5,58 @@ using ZapretWrapper.Models;
 
 namespace ZapretWrapper.Services;
 
-/// <summary>
-/// Хранит настройки приложения в %APPDATA%/ZapretWrapper/settings.json.
-/// Потокобезопасно: один процесс, но на всякий случай используем lock.
-/// </summary>
+/// <summary>Хранит и загружает настройки приложения в %APPDATA%/ZapretWrapper.</summary>
 public static class SettingsService
 {
-    private static readonly object _lock = new();
-    private static readonly string _dir = Path.Combine(
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+
+    public static string ConfigDir { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "ZapretWrapper");
-    private static readonly string _path = Path.Combine(_dir, "settings.json");
 
-    private static AppSettings? _current;
+    public static string ConfigPath => Path.Combine(ConfigDir, "settings.json");
 
-    public static AppSettings Current
+    public static AppSettings Current { get; private set; } = Load();
+
+    private static AppSettings Load()
     {
-        get
-        {
-            lock (_lock)
-            {
-                if (_current is null) Load();
-                return _current!;
-            }
-        }
-    }
-
-    public static void Save()
-    {
-        lock (_lock)
-        {
-            if (_current is null) return;
-            Directory.CreateDirectory(_dir);
-            var json = JsonSerializer.Serialize(_current,
-                new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_path, json);
-        }
-    }
-
-    /// <summary>Полная перезагрузка с диска (для отладки).</summary>
-    public static void Reload() { lock (_lock) { _current = null; Load(); } }
-
-    private static void Load()
-    {
-        if (!File.Exists(_path))
-        {
-            _current = new AppSettings();
-            return;
-        }
         try
         {
-            var json = File.ReadAllText(_path);
-            _current = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            if (File.Exists(ConfigPath))
+            {
+                var json = File.ReadAllText(ConfigPath);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                if (settings is not null) return settings;
+            }
         }
         catch
         {
-            // Повреждённый файл → дефолтные настройки.
-            _current = new AppSettings();
+            // Повреждённый или нечитаемый файл — откатываемся к дефолтам.
         }
+
+        return new AppSettings();
     }
 
-    public static string ConfigPath => _path;
-    public static string ConfigDir => _dir;
+    /// <summary>Перечитывает настройки с диска, заменяя текущий экземпляр.</summary>
+    public static void Reload()
+    {
+        Current = Load();
+    }
+
+    /// <summary>Сохраняет текущие настройки. Возвращает false при ошибке вместо того, чтобы её проглотить.</summary>
+    public static bool Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(ConfigDir);
+            var json = JsonSerializer.Serialize(Current, JsonOptions);
+            File.WriteAllText(ConfigPath, json);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error($"Не удалось сохранить настройки: {ex.Message}");
+            return false;
+        }
+    }
 }

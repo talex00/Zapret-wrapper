@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,9 +8,25 @@ using ZapretWrapper.Models;
 
 namespace ZapretWrapper.Services;
 
+public class StrategyTestOutcome
+{
+    public string Domain { get; init; } = "";
+    public bool IsSuccess { get; init; }
+    public long LatencyMs { get; init; }
+    public string? Error { get; init; }
+}
+
+public class TestProgress
+{
+    public Strategy Strategy { get; init; } = null!;
+    public int Completed { get; init; }
+    public int Total { get; init; }
+    public StrategyTestOutcome? Last { get; init; }
+}
+
 /// <summary>
-/// Прогоняет стратегию: запускает winws2.exe с её аргументами, делает N HEAD-запросов
-/// к списку доменов, замеряет время и считает процент успеха.
+/// Прогоняет стратегию через единственный ZapretRunner и замеряет, открываются ли
+сайты из списка тестовых доменов.
 /// </summary>
 public class StrategyTester
 {
@@ -22,114 +37,93 @@ public class StrategyTester
         _runner = runner;
     }
 
-    public class TestProgress
-    {
-        public int Done { get; set; }
-        public int Total { get; set; }
-        public string CurrentDomain { get; set; } = "";
-    }
-
-    public class StrategyTestOutcome
-    {
-        public Strategy Strategy { get; set; } = null!;
-        public int Successes { get; set; }
-        public int Total { get; set; }
-        public TimeSpan AverageLatency { get; set; }
-        public string? Error { get; set; }
-    }
-
-    public bool IsSuccess(StrategyTestOutcome o) =>
-        o.Error is null && o.Total > 0 && o.Successes == o.Total;
-
-    /// <summary>Полный прогон стратегии. Блокирующий — вызывать в фоне.</summary>
-    public async Task<StrategyTestOutcome> RunAsync(
+    public async Task<List<StrategyTestOutcome>> RunAsync(
         Strategy strategy,
-        IReadOnlyList<string> domains,
-        int attemptsPerDomain = 2,
-        int timeoutSeconds = 5,
+        IEnumerable<string> domains,
         IProgress<TestProgress>? progress = null,
         CancellationToken ct = default)
     {
-        if (!_runner.IsValid)
-            return new StrategyTestOutcome { Strategy = strategy, Error = "zapret2 не настроен" };
+        var domainList = new List<string>(domains);
+        var results = new List<StrategyTestOutcome>();
 
-        // Запускаем winws2 с аргументами стратегии.
-        try { _runner.Stop(); } catch { /* ignore */ }
         var started = _runner.Start(strategy);
         if (!started)
-            return new StrategyTestOutcome { Strategy = strategy, Error = "Не удалось запустить winws2" };
+        {
+            var error = _runner.LastError ?? "Не удалось запустить стратегию";
+            foreach (var domain in domainList)
+                results.Add(new StrategyTestOutcome { Domain = domain, IsSuccess = false, Error = error });
+            return results;
+        }
 
         try
         {
-            return await ProbeAsync(strategy, domains, attemptsPerDomain, timeoutSeconds, progress, ct);
+            // Даём WinDivert время поставить фильтр перед первым запросом.
+            await _runner.WaitUntilReadyAsync(SettingsService.Current.StartupDelayMs, ct);
+
+            for (int i = 0; i < domainList.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var domain = domainList[i];
+                var outcome = await ProbeAsync(domain, ct);
+                results.Add(outcome);
+
+                progress?.Report(new TestProgress
+                {
+                    Strategy = strategy,
+                    Completed = i + 1,
+                    Total = domainList.Count,
+                    Last = outcome,
+                });
+            }
         }
         finally
         {
-            try { _runner.Stop(); } catch { /* ignore */ }
+            _runner.Stop();
         }
+
+        return results;
     }
 
-    private async Task<StrategyTestOutcome> ProbeAsync(
-        Strategy strategy,
-        IReadOnlyList<string> domains,
-        int attempts,
-        int timeout,
-        IProgress<TestProgress>? progress,
-        CancellationToken ct)
+    private static async Task<StrategyTestOutcome> ProbeAsync(string domain, CancellationToken ct)
     {
-        int total = domains.Count * attempts;
-        int done = 0;
-        int success = 0;
-        var latencies = new List<double>();
+        var url = domain.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? domain
+            : $"https://{domain}/";
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(timeout) };
-        if (!http.DefaultRequestHeaders.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0) ZapretWrapper/0.1"))
+        using var handler = new SocketsHttpHandler
         {
-            http.DefaultRequestHeaders.Add("User-Agent", "ZapretWrapper/0.1");
-        }
-
-        foreach (var domain in domains)
-        {
-            for (int i = 0; i < attempts; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                done++;
-                progress?.Report(new TestProgress { Done = done, Total = total, CurrentDomain = domain });
-
-                var sw = Stopwatch.StartNew();
-                try
-                {
-                    var url = domain.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                        ? domain
-                        : $"https://{domain}/";
-                    using var resp = await http.SendAsync(
-                        new HttpRequestMessage(HttpMethod.Head, url),
-                        HttpCompletionOption.ResponseHeadersRead, ct);
-                    sw.Stop();
-                    if ((int)resp.StatusCode < 400)
-                    {
-                        success++;
-                        latencies.Add(sw.Elapsed.TotalMilliseconds);
-                    }
-                }
-                catch
-                {
-                    sw.Stop();
-                    // Провал — не считаем за успех.
-                }
-            }
-        }
-
-        var avg = latencies.Count > 0
-            ? TimeSpan.FromMilliseconds(latencies.Average())
-            : TimeSpan.Zero;
-        return new StrategyTestOutcome
-        {
-            Strategy = strategy,
-            Successes = success,
-            Total = total,
-            AverageLatency = avg,
-            Error = null,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            AllowAutoRedirect = true,
         };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(8) };
+
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            sw.Stop();
+            return new StrategyTestOutcome
+            {
+                Domain = domain,
+                IsSuccess = response.IsSuccessStatusCode || (int)response.StatusCode < 500,
+                LatencyMs = sw.ElapsedMilliseconds,
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return new StrategyTestOutcome
+            {
+                Domain = domain,
+                IsSuccess = false,
+                LatencyMs = sw.ElapsedMilliseconds,
+                Error = ex.Message,
+            };
+        }
     }
 }
