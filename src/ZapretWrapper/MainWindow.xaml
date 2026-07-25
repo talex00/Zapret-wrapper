@@ -1,0 +1,136 @@
+<Window x:Class="ZapretWrapper.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ZapretWrapper.ViewModels"
+        xmlns:views="clr-namespace:ZapretWrapper.Views"
+        Title="Zapret GUI"
+        Width="1380" Height="880"
+        MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Style="{StaticResource AppWindowStyle}">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- =================== SIDEBAR =================== -->
+        <Border Grid.Column="0"
+                Background="{DynamicResource SidebarBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Brand -->
+                <StackPanel Grid.Row="0" Margin="20,20,20,24">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="ZapretGUI"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentBrush}" />
+                        <Border Width="20" Height="20"
+                                Margin="8,4,0,0"
+                                Background="{DynamicResource AccentBrush}"
+                                CornerRadius="4">
+                            <TextBlock Text="🛡"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource AccentTextBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Nav -->
+                <StackPanel Grid.Row="1" Margin="12,0">
+                    <RadioButton x:Name="NavHome"
+                                 Style="{StaticResource NavItemStyle}"
+                                 IsChecked="True"
+                                 Checked="Nav_Checked"
+                                 Tag="🏠"
+                                 Content="Главная" />
+                    <RadioButton x:Name="NavStrategies"
+                                 Style="{StaticResource NavItemStyle}"
+                                 Checked="Nav_Checked"
+                                 Tag="⚙"
+                                 Content="Стратегии" />
+                    <RadioButton x:Name="NavTesting"
+                                 Style="{StaticResource NavItemStyle}"
+                                 Checked="Nav_Checked"
+                                 Tag="🧪"
+                                 Content="Тестирование" />
+                    <RadioButton x:Name="NavLogs"
+                                 Style="{StaticResource NavItemStyle}"
+                                 Checked="Nav_Checked"
+                                 Tag="📄"
+                                 Content="Логи" />
+                    <RadioButton x:Name="NavSettings"
+                                 Style="{StaticResource NavItemStyle}"
+                                 Checked="Nav_Checked"
+                                 Tag="⚙"
+                                 Content="Настройки" />
+                </StackPanel>
+
+                <!-- Footer -->
+                <StackPanel Grid.Row="2" Margin="20,12,20,20">
+                    <TextBlock Text="Версия 0.1.0"
+                               Style="{StaticResource TextMutedStyle}" />
+                    <TextBlock Text="dev build"
+                               Style="{StaticResource TextSubtleStyle}"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- =================== CONTENT =================== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Top bar: status + profile -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="20,12">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="10" Height="10"
+                             Fill="{DynamicResource DangerBrush}"
+                             VerticalAlignment="Center" />
+                    <TextBlock Text="Статус:"
+                               Margin="8,0,6,0"
+                               Style="{StaticResource TextMutedStyle}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="Остановлено"
+                               Foreground="{DynamicResource DangerBrush}"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center" />
+                    <Border Width="1" Height="14"
+                            Margin="20,0"
+                            Background="{DynamicResource BorderStrongBrush}" />
+                    <TextBlock Text="Профиль:"
+                               Style="{StaticResource TextMutedStyle}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="Без обхода"
+                               Margin="6,0,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <!-- Page host -->
+            <ContentControl x:Name="PageHost"
+                            Grid.Row="1"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            Background="{DynamicResource BackgroundBrush}" />
+        </Grid>
+    </Grid>
+</Window>

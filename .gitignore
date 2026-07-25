@@ -1,0 +1,28 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+## Временные файлы сборки
+*.pdb
+*.dll.config
+*.runtimeconfig.json.bak
+
+## Тестовые скриншоты и логи
+*.log
+*.tmp
+tmp/
+screenshots/
+
+## Референсная копия zapret2 (поставляется пользователем отдельно)
+zapret2-v1.0.3/
+zapret2-*/
+
+## IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

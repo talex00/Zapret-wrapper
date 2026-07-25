@@ -1,0 +1,45 @@
+<UserControl x:Class="ZapretWrapper.Views.SettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:styles="clr-namespace:ZapretWrapper.Styles"
+     >
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+        <StackPanel MaxWidth="800" HorizontalAlignment="Left">
+
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Внешний вид"
+                               Style="{StaticResource TextCardTitleStyle}" />
+
+                    <TextBlock Text="Тема"
+                               Style="{StaticResource TextLabelStyle}" />
+                    <ComboBox x:Name="ThemeCombo"
+                              SelectionChanged="ThemeCombo_SelectionChanged"
+                              Width="320" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="Системная" Tag="System" />
+                        <ComboBoxItem Content="Светлая" Tag="Light" />
+                        <ComboBoxItem Content="Тёмная" Tag="Dark" />
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Zapret2"
+                               Style="{StaticResource TextCardTitleStyle}" />
+                    <TextBlock Text="Путь к папке zapret2 (заглушка)."
+                               Style="{StaticResource TextMutedStyle}" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel>
+                    <TextBlock Text="О программе"
+                               Style="{StaticResource TextCardTitleStyle}" />
+                    <TextBlock Text="ZapretWrapper v0.1 — GUI-обёртка для zapret2."
+                               Style="{StaticResource TextMutedStyle}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

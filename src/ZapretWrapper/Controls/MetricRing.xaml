@@ -1,0 +1,26 @@
+<UserControl x:Class="ZapretWrapper.Controls.MetricRing"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root"
+             Width="160" Height="160"
+             HorizontalAlignment="Center"
+             VerticalAlignment="Center">
+    <Grid>
+        <!-- Фоновый трек (полное кольцо). -->
+        <Ellipse Stroke="{DynamicResource TrackBrush}" StrokeThickness="8" />
+        <!-- Дуга значения. Стартует с "12 часов", идёт по часовой стрелке. -->
+        <Path x:Name="ArcPath"
+              Stroke="{Binding ArcBrush, ElementName=Root}"
+              StrokeThickness="8"
+              StrokeStartLineCap="Flat"
+              StrokeEndLineCap="Flat"
+              Fill="Transparent"
+              Stretch="None" />
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Style="{StaticResource TextMetricStyle}"
+                       Text="{Binding Value, ElementName=Root}" />
+            <TextBlock Style="{StaticResource TextMetricCaptionStyle}"
+                       Text="{Binding Caption, ElementName=Root}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

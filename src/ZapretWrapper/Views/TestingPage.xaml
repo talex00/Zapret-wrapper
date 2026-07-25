@@ -1,0 +1,18 @@
+<UserControl x:Class="ZapretWrapper.Views.TestingPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+     >
+    <Grid>
+        <Border Style="{StaticResource CardBorderStyle}"
+                Margin="20"
+                VerticalAlignment="Top"
+                HorizontalAlignment="Stretch">
+            <StackPanel>
+                <TextBlock Text="Тестирование"
+                           Style="{StaticResource TextCardTitleStyle}" />
+                <TextBlock Text="Здесь будет мастер подбора стратегий (blockcheck)."
+                           Style="{StaticResource TextMutedStyle}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

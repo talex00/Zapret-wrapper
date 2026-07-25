@@ -1,0 +1,245 @@
+<UserControl x:Class="ZapretWrapper.Views.HomePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:ZapretWrapper.Controls">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+        <StackPanel>
+            <!-- ========== Quick Start ========== -->
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Быстрый запуск"
+                               Style="{StaticResource TextCardTitleStyle}" />
+
+                    <TextBlock Text="Выберите стратегии:"
+                               Style="{StaticResource TextLabelStyle}" />
+                    <ComboBox x:Name="StrategyCombo">
+                        <ComboBoxItem Content="auto_qq" IsSelected="True" />
+                        <ComboBoxItem Content="discord_auto" />
+                        <ComboBoxItem Content="youtube_qq" />
+                        <ComboBoxItem Content="general_tcp" />
+                        <ComboBoxItem Content="udp_fragment" />
+                        <ComboBoxItem Content="tls_fake_sni" />
+                    </ComboBox>
+
+                    <TextBlock Text="Целевые ресурсы:"
+                               Style="{StaticResource TextLabelStyle}"
+                               Margin="0,16,0,8" />
+                    <WrapPanel>
+                        <Border Style="{StaticResource PillBorderStyle}">
+                            <TextBlock Text="youtube.com" />
+                        </Border>
+                        <Border Style="{StaticResource PillBorderStyle}">
+                            <TextBlock Text="discord.com" />
+                        </Border>
+                        <Border Style="{StaticResource PillBorderStyle}">
+                            <TextBlock Text="twitch.tv" />
+                        </Border>
+                        <Border Style="{StaticResource PillBorderStyle}">
+                            <TextBlock Text="instagram.com" />
+                        </Border>
+                    </WrapPanel>
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0"
+                                Content="Запустить обход" />
+                        <Button Grid.Column="2"
+                                Content="Остановить" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ========== Network stats ========== -->
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16" MinHeight="240">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Сетевая статистика"
+                               Style="{StaticResource TextCardTitleStyle}" />
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0" Margin="8">
+                            <ctrl:MetricRing Value="42"
+                                             Caption="Пинг: 42 мс"
+                                             ArcBrush="{DynamicResource PingBrush}"
+                                             Progress="0.42" />
+                        </Grid>
+                        <Grid Grid.Column="1" Margin="8">
+                            <ctrl:MetricRing Value="0"
+                                             Caption="Потери: 0%"
+                                             ArcBrush="{DynamicResource LossBrush}"
+                                             Progress="0" />
+                        </Grid>
+                        <Grid Grid.Column="2" Margin="8">
+                            <ctrl:MetricRing Value="94"
+                                             Caption="Скорость: 94 Мбит/с"
+                                             ArcBrush="{DynamicResource SpeedBrush}"
+                                             Progress="0.94" />
+                        </Grid>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- ========== Test results ========== -->
+            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+                <DockPanel LastChildFill="True">
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Результаты тестирования"
+                                   Style="{StaticResource TextCardTitleStyle}"
+                                   Margin="0" />
+                        <Button Grid.Column="1"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                Content="Запустить тест всех"
+                                Margin="0,0,0,12" />
+                    </Grid>
+
+                    <DataGrid x:Name="ResultsGrid">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Название стратегии"
+                                                Binding="{Binding Name}"
+                                                Width="2*" />
+                            <DataGridTemplateColumn Header="Статус" Width="1.4*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="✓" Foreground="{DynamicResource SuccessBrush}"
+                                                       FontWeight="Bold" Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding StatusText}" Value="Успешно">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="✕" Foreground="{DynamicResource DangerBrush}"
+                                                       FontWeight="Bold" Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding StatusText}" Value="Ошибка">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="◌" Foreground="{DynamicResource TextSubtleBrush}"
+                                                       Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding StatusText}" Value="Ожидание">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="◐" Foreground="{DynamicResource WarnBrush}"
+                                                       Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding StatusText}" Value="Тестирование…">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding StatusText}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Пинг (мс)"
+                                                Binding="{Binding PingText}"
+                                                Width="0.8*" />
+                            <DataGridTextColumn Header="Потери (%)"
+                                                Binding="{Binding LossText}"
+                                                Width="0.8*" />
+                            <DataGridTextColumn Header="Скорость (Мбит/с)"
+                                                Binding="{Binding SpeedText}"
+                                                Width="1.1*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+
+            <!-- ========== Event log ========== -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <DockPanel LastChildFill="True">
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Журнал событий"
+                                   Style="{StaticResource TextCardTitleStyle}"
+                                   Margin="0" />
+                        <TextBlock Grid.Column="1"
+                                   Text="L"
+                                   FontSize="16"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="0,0,0,12"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Border Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="12">
+                        <ScrollViewer x:Name="LogScroll"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Background="Transparent">
+                            <StackPanel>
+                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
+                                    <Run Foreground="{DynamicResource AccentBrush}" Text="[INFO]   " />
+                                    <Run Foreground="{DynamicResource TextBrush}" Text="Инициализация тестирования..." />
+                                </TextBlock>
+                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
+                                    <Run Foreground="{DynamicResource AccentBrush}" Text="[INFO]   " />
+                                    <Run Foreground="{DynamicResource TextBrush}" Text="Проверка стратегии 'discord_auto'..." />
+                                </TextBlock>
+                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
+                                    <Run Foreground="{DynamicResource SuccessBrush}" Text="[SUCCESS]" />
+                                    <Run Foreground="{DynamicResource TextBrush}" Text=" 'discord_auto' успешно прошла проверку." />
+                                </TextBlock>
+                                <TextBlock FontFamily="Consolas" FontSize="12" Margin="0,0,0,4">
+                                    <Run Foreground="{DynamicResource WarnBrush}" Text="[WARN]   " />
+                                    <Run Foreground="{DynamicResource TextBrush}" Text=" 'general_tcp' не получила ответ от сервера." />
+                                </TextBlock>
+                                <TextBlock FontFamily="Consolas" FontSize="12">
+                                    <Run Foreground="{DynamicResource AccentBrush}" Text="[INFO]   " />
+                                    <Run Foreground="{DynamicResource TextBrush}" Text="Переход к следующей стратегии..." />
+                                </TextBlock>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

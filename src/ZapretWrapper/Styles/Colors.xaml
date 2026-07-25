@@ -1,0 +1,100 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Палитра цветов в стиле Windows 11 Settings.
+        Содержит базовые Color-токены (Light.* / Dark.*) и активные SolidColorBrush-токены,
+        которые ThemeManager переназначает при смене темы.
+        Все стили в Controls.xaml ссылаются на активные *Brush, поэтому при смене темы
+        достаточно переписать их Color.
+    -->
+
+    <!-- =================== LIGHT =================== -->
+    <Color x:Key="Light.BackgroundColor">#F3F3F3</Color>
+    <Color x:Key="Light.SidebarColor">#F9F9F9</Color>
+    <Color x:Key="Light.SurfaceColor">#FFFFFF</Color>
+    <Color x:Key="Light.SurfaceAltColor">#FAFAFA</Color>
+    <Color x:Key="Light.BorderColor">#E5E5E5</Color>
+    <Color x:Key="Light.BorderStrongColor">#D0D0D0</Color>
+    <Color x:Key="Light.TextColor">#1F1F1F</Color>
+    <Color x:Key="Light.TextMutedColor">#616161</Color>
+    <Color x:Key="Light.TextSubtleColor">#8A8A8A</Color>
+
+    <Color x:Key="Light.AccentColor">#0067C0</Color>
+    <Color x:Key="Light.AccentHoverColor">#0078D4</Color>
+    <Color x:Key="Light.AccentPressedColor">#005A9E</Color>
+    <Color x:Key="Light.AccentLightColor">#DEECF9</Color>
+    <Color x:Key="Light.AccentTextColor">#FFFFFF</Color>
+
+    <Color x:Key="Light.SuccessColor">#107C10</Color>
+    <Color x:Key="Light.SuccessLightColor">#DFF6DF</Color>
+    <Color x:Key="Light.DangerColor">#C42B1C</Color>
+    <Color x:Key="Light.DangerLightColor">#FDE7E7</Color>
+    <Color x:Key="Light.WarnColor">#9D5D00</Color>
+    <Color x:Key="Light.WarnLightColor">#FFF4CE</Color>
+    <Color x:Key="Light.NeutralLightColor">#EDEDED</Color>
+    <Color x:Key="Light.PingColor">#00B7C3</Color>
+    <Color x:Key="Light.LossColor">#3FA535</Color>
+    <Color x:Key="Light.SpeedColor">#E3008C</Color>
+    <Color x:Key="Light.ShadowColor">#1A000000</Color>
+
+    <!-- =================== DARK =================== -->
+    <Color x:Key="Dark.BackgroundColor">#202020</Color>
+    <Color x:Key="Dark.SidebarColor">#181818</Color>
+    <Color x:Key="Dark.SurfaceColor">#2C2C2C</Color>
+    <Color x:Key="Dark.SurfaceAltColor">#262626</Color>
+    <Color x:Key="Dark.BorderColor">#3F3F3F</Color>
+    <Color x:Key="Dark.BorderStrongColor">#555555</Color>
+    <Color x:Key="Dark.TextColor">#FFFFFF</Color>
+    <Color x:Key="Dark.TextMutedColor">#C5C5C5</Color>
+    <Color x:Key="Dark.TextSubtleColor">#8A8A8A</Color>
+
+    <Color x:Key="Dark.AccentColor">#4CC2FF</Color>
+    <Color x:Key="Dark.AccentHoverColor">#3AA9E0</Color>
+    <Color x:Key="Dark.AccentPressedColor">#2A8AB8</Color>
+    <Color x:Key="Dark.AccentLightColor">#1F3A4A</Color>
+    <Color x:Key="Dark.AccentTextColor">#000000</Color>
+
+    <Color x:Key="Dark.SuccessColor">#6CCB5F</Color>
+    <Color x:Key="Dark.SuccessLightColor">#1E3B1A</Color>
+    <Color x:Key="Dark.DangerColor">#FF99A4</Color>
+    <Color x:Key="Dark.DangerLightColor">#4A1F23</Color>
+    <Color x:Key="Dark.WarnColor">#FCE100</Color>
+    <Color x:Key="Dark.WarnLightColor">#4A3A00</Color>
+    <Color x:Key="Dark.NeutralLightColor">#2A2A2A</Color>
+    <Color x:Key="Dark.PingColor">#00B7C3</Color>
+    <Color x:Key="Dark.LossColor">#3FA535</Color>
+    <Color x:Key="Dark.SpeedColor">#E3008C</Color>
+    <Color x:Key="Dark.ShadowColor">#33000000</Color>
+
+    <!-- =================== ACTIVE BRUSHES =================== -->
+    <!-- Эти кисти переназначаются ThemeManager при смене темы. По умолчанию — Light. -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource Light.BackgroundColor}" />
+    <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource Light.SidebarColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Light.SurfaceColor}" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="{StaticResource Light.SurfaceAltColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Light.BorderColor}" />
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource Light.BorderStrongColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource Light.TextColor}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource Light.TextMutedColor}" />
+    <SolidColorBrush x:Key="TextSubtleBrush" Color="{StaticResource Light.TextSubtleColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Light.AccentColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource Light.AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource Light.AccentPressedColor}" />
+    <SolidColorBrush x:Key="AccentLightBrush" Color="{StaticResource Light.AccentLightColor}" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="{StaticResource Light.AccentTextColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource Light.SuccessColor}" />
+    <SolidColorBrush x:Key="SuccessLightBrush" Color="{StaticResource Light.SuccessLightColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Light.DangerColor}" />
+    <SolidColorBrush x:Key="DangerLightBrush" Color="{StaticResource Light.DangerLightColor}" />
+    <SolidColorBrush x:Key="WarnBrush" Color="{StaticResource Light.WarnColor}" />
+    <SolidColorBrush x:Key="WarnLightBrush" Color="{StaticResource Light.WarnLightColor}" />
+    <SolidColorBrush x:Key="NeutralLightBrush" Color="{StaticResource Light.NeutralLightColor}" />
+    <SolidColorBrush x:Key="PingBrush" Color="{StaticResource Light.PingColor}" />
+    <SolidColorBrush x:Key="LossBrush" Color="{StaticResource Light.LossColor}" />
+    <SolidColorBrush x:Key="SpeedBrush" Color="{StaticResource Light.SpeedColor}" />
+
+    <!-- Кисть трека (для круговых индикаторов). -->
+    <SolidColorBrush x:Key="TrackBrush" Color="{StaticResource Light.NeutralLightColor}" />
+
+</ResourceDictionary>
