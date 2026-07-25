@@ -1,11 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace ZapretWrapper.Services;
 
 /// <summary>
-/// Проверяет наличие winws2.exe и связанных файлов в указанной пользователем папке zapret2.
-/// Не модифицирует файлы — только чтение.
+/// Проверяет структуру папки zapret2 и разворачивает плейсхолдеры в аргументах
+/// стратегий в абсолютные пути. Только чтение, ничего не модифицирует.
 /// </summary>
 public static class ZapretLocator
 {
@@ -19,6 +21,7 @@ public static class ZapretLocator
     public record Paths(
         string WinwsExe,
         string LuaDir,
+        string FilesDir,
         string FakeDir,
         string WindivertFilterDir);
 
@@ -51,7 +54,7 @@ public static class ZapretLocator
         return layout;
     }
 
-    /// <summary>Возвращает пути к основным ресурсам (даже если Validate ещё не звался).</summary>
+    /// <summary>Пути к основным ресурсам внутри папки zapret2.</summary>
     public static Paths ResolvePaths(string zapretPath)
     {
         // Структура zapret-win-bundle / zapret2:
@@ -63,40 +66,87 @@ public static class ZapretLocator
         return new Paths(
             WinwsExe: Path.Combine(zapretPath, "binaries", "windows-x86_64", "winws2.exe"),
             LuaDir: Path.Combine(zapretPath, "lua"),
+            FilesDir: Path.Combine(zapretPath, "files"),
             FakeDir: Path.Combine(zapretPath, "files", "fake"),
             WindivertFilterDir: Path.Combine(zapretPath, "init.d", "windivert.filter"));
     }
 
-    /// <summary>Заменяет плейсхолдеры &lt;lua/...&gt;, &lt;files/...&gt; в аргументах стратегии на абсолютные пути.</summary>
+    private static readonly Regex PlaceholderRegex =
+        new(@"<([^<>]+)>", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Заменяет плейсхолдеры вида &lt;lua/...&gt;, &lt;files/...&gt;, &lt;windivert.filter/...&gt;
+    /// на абсолютные пути. Работает в любой части аргумента, а не только в начале,
+    /// поэтому корректно обрабатывает и "--hostlist=&lt;files/list-youtube.txt&gt;",
+    /// и "--wf-raw-part=@&lt;windivert.filter/windivert_part.tcp80.txt&gt;".
+    /// </summary>
     public static string[] ResolveArgs(string[] templateArgs, string zapretPath)
     {
-        var paths = ResolvePaths(zapretPath);
         var resolved = new string[templateArgs.Length];
         for (int i = 0; i < templateArgs.Length; i++)
-        {
-            var a = templateArgs[i];
-            if (a.StartsWith("@<lua/"))
-                a = "@" + Path.Combine(paths.LuaDir, a.Substring("@<lua/".Length).TrimEnd('>'));
-            else if (a.StartsWith("@<files/"))
-                a = "@" + Path.Combine(zapretPath, a.Substring("@<files/".Length).TrimEnd('>'));
-            else if (a.StartsWith("<files/"))
-                a = Path.Combine(zapretPath, a.Substring("<files/".Length).TrimEnd('>'));
-            else if (a.StartsWith("<lua/"))
-                a = Path.Combine(paths.LuaDir, a.Substring("<lua/".Length).TrimEnd('>'));
-            // Опции вида "--key=<files/list-youtube.txt>"
-            else if (a.Contains("<files/"))
-                a = ResolveInPlace(a, zapretPath, paths);
-            resolved[i] = a;
-        }
+            resolved[i] = ResolveArg(templateArgs[i], zapretPath);
         return resolved;
     }
 
-    private static string ResolveInPlace(string arg, string zapretPath, Paths paths)
+    public static string ResolveArg(string arg, string zapretPath)
     {
-        if (arg.Contains("<files/"))
-            arg = arg.Replace("<files/", zapretPath + Path.DirectorySeparatorChar);
-        if (arg.Contains("<lua/"))
-            arg = arg.Replace("<lua/", paths.LuaDir + Path.DirectorySeparatorChar);
-        return arg.TrimEnd('>');
+        if (string.IsNullOrEmpty(arg)) return arg;
+
+        arg = StripCmdQuotes(arg);
+        if (!arg.Contains('<')) return arg;
+
+        return PlaceholderRegex.Replace(
+            arg, m => ResolvePlaceholder(m.Groups[1].Value, zapretPath));
+    }
+
+    /// <summary>
+    /// Пресеты скопированы из .cmd-файлов, где значения обёрнуты в кавычки для cmd.exe.
+    /// При запуске через ProcessStartInfo.ArgumentList кавычки экранируются и уезжают
+    /// в winws2 как часть значения — снимаем их.
+    /// </summary>
+    private static string StripCmdQuotes(string arg)
+    {
+        var eq = arg.IndexOf('=');
+        if (eq > 0
+            && arg.Length > eq + 2
+            && arg[eq + 1] == '"'
+            && arg[^1] == '"')
+        {
+            return string.Concat(
+                arg.AsSpan(0, eq + 1),
+                arg.AsSpan(eq + 2, arg.Length - eq - 3));
+        }
+
+        if (arg.Length > 1 && arg[0] == '"' && arg[^1] == '"')
+            return arg[1..^1];
+
+        return arg;
+    }
+
+    private static string ResolvePlaceholder(string body, string zapretPath)
+    {
+        var paths = ResolvePaths(zapretPath);
+
+        var normalized = body
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Trim();
+
+        var slash = normalized.IndexOf(Path.DirectorySeparatorChar);
+        if (slash <= 0)
+            return Path.Combine(zapretPath, normalized);
+
+        var root = normalized[..slash];
+        var rest = normalized[(slash + 1)..];
+
+        return root.ToLowerInvariant() switch
+        {
+            "lua" => Path.Combine(paths.LuaDir, rest),
+            // Важно: подпапка files/ должна сохраняться — раньше она терялась.
+            "files" => Path.Combine(paths.FilesDir, rest),
+            "windivert.filter" => Path.Combine(paths.WindivertFilterDir, rest),
+            "binaries" => Path.Combine(zapretPath, "binaries", rest),
+            _ => Path.Combine(zapretPath, normalized),
+        };
     }
 }

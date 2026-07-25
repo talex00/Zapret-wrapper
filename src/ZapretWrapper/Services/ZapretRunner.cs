@@ -1,18 +1,22 @@
 using System;
 using System.Diagnostics;
+using System.Security.Principal;
 using System.Threading;
+using System.Threading.Tasks;
 using ZapretWrapper.Models;
 
 namespace ZapretWrapper.Services;
 
 /// <summary>
-/// Запускает и останавливает winws2.exe. Поддерживает одновременно только один инстанс.
-/// При первом запуске запрашивает UAC (Verb=runas) и кэширует elevation до закрытия процесса.
+/// Запускает и останавливает winws2.exe. Поддерживает только один инстанс сразу.
+/// Само приложение поднимается с правами администратора (app.manifest), поэтому
+/// процесс стартует без UAC-диалога, его вывод можно читать, а его самого — убить.
 /// </summary>
 public class ZapretRunner : IDisposable
 {
     private Process? _process;
     private readonly object _lock = new();
+    private volatile bool _stopping;
 
     public bool IsRunning
     {
@@ -21,9 +25,31 @@ public class ZapretRunner : IDisposable
 
     public string? LastError { get; private set; }
 
-    public bool IsValid => SettingsService.Current.ZapretPath is { } p
-        && ZapretLocator.Validate(p).IsValid;
+    /// <summary>Стратегия, с которой запущен текущий процесс.</summary>
+    public Strategy? CurrentStrategy { get; private set; }
 
+    public bool IsValid => ZapretLocator.Validate(SettingsService.Current.ZapretPath).IsValid;
+
+    public static bool IsElevated
+    {
+        get
+        {
+            try
+            {
+                using var identity = WindowsIdentity.GetCurrent();
+                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    /// <summary>Любая смена состояния: запуск, остановка, неожиданное падение.</summary>
+    public event EventHandler? StateChanged;
+
+    /// <summary>Процесс завершился сам, без вызова Stop().</summary>
     public event EventHandler? ProcessExited;
 
     /// <summary>Запустить winws2.exe с аргументами стратегии.</summary>
@@ -38,14 +64,24 @@ public class ZapretRunner : IDisposable
             }
 
             var path = SettingsService.Current.ZapretPath;
-            if (path is null || !ZapretLocator.Validate(path).IsValid)
+            var layout = ZapretLocator.Validate(path);
+            if (!layout.IsValid)
             {
-                LastError = "zapret2 не настроен. Укажите путь в Настройках.";
+                LastError = layout.Error
+                    ?? ("Не найдены файлы: " + string.Join(", ", layout.Missing));
+                LogService.Error($"Запуск отменён: {LastError}");
                 return false;
             }
 
-            var paths = ZapretLocator.ResolvePaths(path);
-            var args = ZapretLocator.ResolveArgs(strategy.Args.ToArray(), path);
+            if (!IsElevated)
+            {
+                LastError = "Приложение должно быть запущено от имени администратора.";
+                LogService.Error(LastError);
+                return false;
+            }
+
+            var paths = ZapretLocator.ResolvePaths(path!);
+            var args = ZapretLocator.ResolveArgs(strategy.Args.ToArray(), path!);
 
             try
             {
@@ -53,55 +89,143 @@ public class ZapretRunner : IDisposable
                 {
                     FileName = paths.WinwsExe,
                     WorkingDirectory = path,
-                    UseShellExecute = true,
-                    Verb = "runas", // Запросить UAC.
-                    WindowStyle = ProcessWindowStyle.Hidden,
+                    // UseShellExecute=false обязателен для перехвата вывода winws2.
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                 };
                 foreach (var a in args) psi.ArgumentList.Add(a);
 
-                _process = Process.Start(psi);
-                if (_process is null)
+                LogService.Debug($"{paths.WinwsExe} {string.Join(" ", args)}");
+
+                var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+                process.OutputDataReceived += (_, e) =>
                 {
-                    LastError = "Process.Start вернул null";
+                    if (!string.IsNullOrWhiteSpace(e.Data)) LogService.Debug("winws2: " + e.Data);
+                };
+                process.ErrorDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Data)) LogService.Warn("winws2: " + e.Data);
+                };
+                process.Exited += OnProcessExited;
+
+                if (!process.Start())
+                {
+                    LastError = "Не удалось запустить winws2.exe";
+                    process.Dispose();
+                    LogService.Error(LastError);
                     return false;
                 }
-                _process.EnableRaisingEvents = true;
-                _process.Exited += (_, _) => ProcessExited?.Invoke(this, EventArgs.Empty);
+
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+
+                _process = process;
+                CurrentStrategy = strategy;
                 LastError = null;
-                return true;
+                LogService.Success(
+                    $"winws2 запущен (PID {process.Id}), стратегия «{strategy.Name}».");
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
+                LogService.Error($"Ошибка запуска winws2: {ex.Message}");
                 return false;
             }
         }
+
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    private void OnProcessExited(object? sender, EventArgs e)
+    {
+        // Штатную остановку обрабатывает Stop(); сюда попадают только падения.
+        if (_stopping) return;
+
+        CurrentStrategy = null;
+        LogService.Warn("winws2 завершил работу неожиданно.");
+        ProcessExited?.Invoke(this, EventArgs.Empty);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Остановить запущенный winws2.exe.</summary>
     public bool Stop()
     {
+        bool changed = false;
+
         lock (_lock)
         {
-            if (_process is null || _process.HasExited) return true;
-            try
+            if (_process is null)
             {
-                _process.Kill(entireProcessTree: true);
-                _process.WaitForExit(3000);
                 LastError = null;
                 return true;
             }
-            catch (Exception ex)
+
+            if (_process.HasExited)
             {
-                LastError = ex.Message;
-                return false;
+                _process.Dispose();
+                _process = null;
+                CurrentStrategy = null;
+                LastError = null;
+                changed = true;
+            }
+            else
+            {
+                _stopping = true;
+                try
+                {
+                    _process.Kill(entireProcessTree: true);
+                    if (!_process.WaitForExit(5000))
+                    {
+                        LastError = "winws2 не завершился за 5 секунд.";
+                        LogService.Warn(LastError);
+                        return false;
+                    }
+
+                    _process.Dispose();
+                    _process = null;
+                    CurrentStrategy = null;
+                    LastError = null;
+                    changed = true;
+                    LogService.Info("winws2 остановлен.");
+                }
+                catch (Exception ex)
+                {
+                    LastError = ex.Message;
+                    LogService.Error($"Ошибка остановки winws2: {ex.Message}");
+                    return false;
+                }
+                finally
+                {
+                    _stopping = false;
+                }
             }
         }
+
+        if (changed) StateChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>
+    /// Ждёт, пока WinDivert поставит фильтр. Без этой паузы первые пробы тестера
+    /// проваливаются ложно. Возвращает false, если процесс не пережил запуск.
+    /// </summary>
+    public async Task<bool> WaitUntilReadyAsync(int milliseconds = 1500, CancellationToken ct = default)
+    {
+        await Task.Delay(milliseconds, ct);
+        return IsRunning;
     }
 
     public void Dispose()
     {
         try { Stop(); } catch { /* ignore */ }
-        _process?.Dispose();
+        lock (_lock)
+        {
+            _process?.Dispose();
+            _process = null;
+        }
+        GC.SuppressFinalize(this);
     }
 }

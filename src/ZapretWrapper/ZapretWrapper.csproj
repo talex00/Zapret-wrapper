@@ -9,6 +9,7 @@
     <RootNamespace>ZapretWrapper</RootNamespace>
     <AssemblyName>ZapretWrapper</AssemblyName>
     <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
 </Project>
