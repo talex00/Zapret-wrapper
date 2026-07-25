@@ -16,4 +16,7 @@ public class AppSettings
 
     /// <summary>Домены для тестирования (через запятую). Если пусто — дефолтный список.</summary>
     public string TestDomains { get; set; } = "";
+
+    /// <summary>Сколько мс ждать после запуска winws2, прежде чем начинать пробы (WinDivert должен успеть поставить фильтр).</summary>
+    public int StartupDelayMs { get; set; } = 1500;
 }

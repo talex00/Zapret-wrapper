@@ -1,28 +1,31 @@
-using ZapretWrapper.Models;
-
 namespace ZapretWrapper.ViewModels;
 
-/// <summary>Строка таблицы результатов теста стратегии. Свойства уведомляют UI об изменениях,
-/// чтобы DataGrid обновлялся в реальном времени.</summary>
+public enum TestStatus
+{
+    Pending,
+    Running,
+    Success,
+    Failure,
+}
+
+/// <summary>
+/// Строка таблицы результатов теста стратегии на главной странице. Раньше наследовалась от
+/// ViewModelBase, но использовала простые auto-свойства — PropertyChanged никогда не вызывался,
+/// и DataGrid на главной странице не обновлялся во время теста.
+/// </summary>
 public class StrategyTestRow : ViewModelBase
 {
-    private Strategy _strategy = null!;
+    private string _name = "";
     private TestStatus _status = TestStatus.Pending;
-    private int _successCount;
-    private int _totalCount;
-    private double _avgLatencyMs;
+    private int? _ping;
+    private double? _loss;
+    private double? _speed;
 
-    public Strategy Strategy
+    public string Name
     {
-        get => _strategy;
-        set
-        {
-            if (SetField(ref _strategy, value))
-                OnPropertyChanged(nameof(Name));
-        }
+        get => _name;
+        set => SetField(ref _name, value);
     }
-
-    public string Name => Strategy?.Name ?? "";
 
     public TestStatus Status
     {
@@ -34,53 +37,48 @@ public class StrategyTestRow : ViewModelBase
         }
     }
 
-    public int SuccessCount
+    /// <summary>Средняя задержка успешных ответов, мс.</summary>
+    public int? Ping
     {
-        get => _successCount;
+        get => _ping;
         set
         {
-            if (SetField(ref _successCount, value))
-                OnPropertyChanged(nameof(SuccessRateText));
+            if (SetField(ref _ping, value))
+                OnPropertyChanged(nameof(PingText));
         }
     }
 
-    public int TotalCount
+    /// <summary>Доля успешных попыток, %. Название историческое, в UI отображается как «Успех».</summary>
+    public double? Loss
     {
-        get => _totalCount;
+        get => _loss;
         set
         {
-            if (SetField(ref _totalCount, value))
-                OnPropertyChanged(nameof(SuccessRateText));
+            if (SetField(ref _loss, value))
+                OnPropertyChanged(nameof(LossText));
         }
     }
 
-    public double AvgLatencyMs
+    /// <summary>Средняя задержка по всем успешным ответам, мс.</summary>
+    public double? Speed
     {
-        get => _avgLatencyMs;
+        get => _speed;
         set
         {
-            if (SetField(ref _avgLatencyMs, value))
-                OnPropertyChanged(nameof(AvgLatencyText));
+            if (SetField(ref _speed, value))
+                OnPropertyChanged(nameof(SpeedText));
         }
     }
 
     public string StatusText => Status switch
     {
-        TestStatus.Running => "Тестируется…",
+        TestStatus.Running => "Тестирование…",
         TestStatus.Success => "Успешно",
-        TestStatus.Failed => "Неудача",
+        TestStatus.Failure => "Ошибка",
         _ => "Ожидание",
     };
 
-    public string SuccessRateText => TotalCount == 0 ? "—" : $"{SuccessCount}/{TotalCount}";
-
-    public string AvgLatencyText => TotalCount == 0 ? "—" : $"{AvgLatencyMs:0} мс";
-}
-
-public enum TestStatus
-{
-    Pending,
-    Running,
-    Success,
-    Failed,
+    public string PingText => Ping is null ? "—" : $"{Ping} мс";
+    public string LossText => Loss is null ? "—" : $"{Loss:0}%";
+    public string SpeedText => Speed is null ? "—" : $"{Speed:0} мс";
 }
