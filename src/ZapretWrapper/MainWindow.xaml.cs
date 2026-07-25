@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using ZapretWrapper.Services;
@@ -9,26 +10,27 @@ namespace ZapretWrapper;
 public partial class MainWindow : Window
 {
     private bool _initialized;
+    private readonly Dictionary<string, FrameworkElement> _pageCache = new();
 
     public MainWindow()
     {
         InitializeComponent();
         _initialized = true;
 
-        // Системный title bar подстраиваем под активную тему.
         SourceInitialized += (_, _) => WindowChrome.Apply(this);
         Activated += (_, _) => WindowChrome.Apply(this);
         ThemeManager.ThemeChanged += (_, _) => WindowChrome.Apply(this);
 
-        // При ресайзе окна форвардим размер в активную страницу (адаптивный layout).
         SizeChanged += (_, e) =>
         {
             if (PageHost.Content is HomePage hp)
                 hp.HandleResize(e.NewSize.Width);
         };
 
+        if (App.Runner is ZapretRunner runner)
+            runner.StateChanged += (_, _) => RefreshStatus();
+
         NavigateTo("home");
-        // Принудительно дёрнем ресайз сразу после навигации.
         Dispatcher.BeginInvoke(new System.Action(ResizeCurrentPage),
             System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
@@ -59,20 +61,26 @@ public partial class MainWindow : Window
 
     private void NavigateTo(string page)
     {
-        FrameworkElement target = page switch
+        if (!_pageCache.TryGetValue(page, out var target))
         {
-            "home" => new HomePage(),
-            "strategies" => new StrategiesPage(),
-            "testing" => new TestingPage(),
-            "logs" => new LogsPage(),
-            "settings" => new SettingsPage(),
-            _ => new HomePage()
-        };
+            target = page switch
+            {
+                "home" => new HomePage(),
+                "strategies" => new StrategiesPage(),
+                "testing" => new TestingPage(),
+                "logs" => new LogsPage(),
+                "settings" => new SettingsPage(),
+                _ => new HomePage()
+            };
+            _pageCache[page] = target;
+        }
+
+        if (target is HomePage hp)
+            hp.RefreshFromSettings();
 
         PageHost.Content = target;
     }
 
-    /// <summary>Обновляет шапку (статус + профиль) из App.Runner.</summary>
     public void RefreshStatus()
     {
         var runner = App.Runner;

@@ -4,7 +4,6 @@
              xmlns:ctrl="clr-namespace:ZapretWrapper.Controls">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
         <StackPanel>
-            <!-- ========== Quick Start ========== -->
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Быстрый запуск"
@@ -50,7 +49,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- ========== Network stats ========== -->
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16" MinHeight="240">
                 <DockPanel LastChildFill="True">
                     <TextBlock DockPanel.Dock="Top"
@@ -85,7 +83,6 @@
                 </DockPanel>
             </Border>
 
-            <!-- ========== Test results ========== -->
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
                 <DockPanel LastChildFill="True">
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
@@ -105,72 +102,14 @@
                                    VerticalAlignment="Center" />
                     </Grid>
 
-                    <DataGrid x:Name="ResultsGrid">
+                    <DataGrid x:Name="ResultsGrid" AutoGenerateColumns="False">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Название стратегии"
                                                 Binding="{Binding Name}"
                                                 Width="2*" />
-                            <DataGridTemplateColumn Header="Статус" Width="1.4*">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="✓" Foreground="{DynamicResource SuccessBrush}"
-                                                       FontWeight="Bold" Margin="0,0,6,0">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding StatusText}" Value="Успешно">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="✕" Foreground="{DynamicResource DangerBrush}"
-                                                       FontWeight="Bold" Margin="0,0,6,0">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding StatusText}" Value="Ошибка">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="◌" Foreground="{DynamicResource TextSubtleBrush}"
-                                                       Margin="0,0,6,0">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding StatusText}" Value="Ожидание">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="◐" Foreground="{DynamicResource WarnBrush}"
-                                                       Margin="0,0,6,0">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding StatusText}" Value="Тестирование…">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding StatusText}" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Статус"
+                                                Binding="{Binding StatusText}"
+                                                Width="1.4*" />
                             <DataGridTextColumn Header="Пинг (мс)"
                                                 Binding="{Binding PingText}"
                                                 Width="0.8*" />
@@ -185,7 +124,6 @@
                 </DockPanel>
             </Border>
 
-            <!-- ========== Event log ========== -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <DockPanel LastChildFill="True">
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,12">

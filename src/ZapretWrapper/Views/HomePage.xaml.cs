@@ -24,7 +24,6 @@ public partial class HomePage : UserControl
         InitializeComponent();
         ResultsGrid.ItemsSource = _rows;
 
-        // Заполняем список стратегий дефолтным набором (UI для тестов).
         foreach (var s in StrategyCatalog.All)
         {
             _rows.Add(new StrategyTestRow
@@ -34,7 +33,15 @@ public partial class HomePage : UserControl
             });
         }
 
-        // Целевые ресурсы — из настроек или дефолт.
+        RefreshFromSettings();
+
+        Loaded += (_, _) => AppendLog("INFO", "Главная загружена. Выберите стратегию и нажмите «Запустить обход».");
+    }
+
+    public void HandleResize(double windowWidth) { }
+
+    public void RefreshFromSettings()
+    {
         var domains = GetTargetDomains();
         TargetResourcesPanel.Children.Clear();
         foreach (var d in domains)
@@ -44,7 +51,6 @@ public partial class HomePage : UserControl
             TargetResourcesPanel.Children.Add(border);
         }
 
-        // Восстанавливаем выбор стратегии из настроек.
         var saved = SettingsService.Current.SelectedStrategyId;
         if (!string.IsNullOrEmpty(saved))
         {
@@ -57,11 +63,7 @@ public partial class HomePage : UserControl
                 }
             }
         }
-
-        Loaded += (_, _) => AppendLog("INFO", "Главная загружена. Выберите стратегию и нажмите «Запустить обход».");
     }
-
-    public void HandleResize(double windowWidth) { }
 
     private void RefreshHeader()
     {
@@ -76,8 +78,6 @@ public partial class HomePage : UserControl
                     .ToList();
         return new() { "youtube.com", "discord.com", "instagram.com", "twitch.tv" };
     }
-
-    // =================== Стратегия ===================
 
     private void StrategyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -95,8 +95,6 @@ public partial class HomePage : UserControl
         var id = cbi.Tag as string;
         return StrategyCatalog.FindById(id);
     }
-
-    // =================== Запуск/остановка ===================
 
     private void Start_Click(object sender, RoutedEventArgs e)
     {
@@ -145,8 +143,6 @@ public partial class HomePage : UserControl
         RefreshHeader();
     }
 
-    // =================== Тест ===================
-
     private async void TestAll_Click(object sender, RoutedEventArgs e)
     {
         var runner = App.Runner;
@@ -155,6 +151,13 @@ public partial class HomePage : UserControl
         if (!runner.IsValid)
         {
             MessageBox.Show("Сначала укажите путь к zapret2 в Настройках.",
+                "ZapretWrapper", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (runner.IsRunning)
+        {
+            MessageBox.Show("Сначала остановите текущий запуск — тестирование само управляет winws2.",
                 "ZapretWrapper", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -169,28 +172,26 @@ public partial class HomePage : UserControl
         var domains = GetTargetDomains();
         var strategies = StrategyCatalog.All.ToList();
 
-        // Сбрасываем строки.
         for (int i = 0; i < _rows.Count; i++)
         {
-            _rows[i].Status = i < strategies.Count ? TestStatus.Pending : TestStatus.Pending;
+            _rows[i].Status = TestStatus.Pending;
+            _rows[i].Ping = null;
+            _rows[i].Loss = null;
+            _rows[i].Speed = null;
         }
-
-        var progress = new Progress<(int idx, TestStatus s, int? ping, double? loss, double? speed)>(p =>
-        {
-            _rows[p.idx].Status = p.s;
-            _rows[p.idx].Ping = p.ping;
-            _rows[p.idx].Loss = p.loss;
-            _rows[p.idx].Speed = p.speed;
-        });
 
         AppendLog("INFO", $"Запуск тестирования {strategies.Count} стратегий по {domains.Count} доменам...");
 
+        var outcomes = new List<StrategyTester.StrategyTestOutcome>();
+
         try
         {
-            var tasks = strategies.Select(async (s, idx) =>
+            for (int idx = 0; idx < strategies.Count; idx++)
             {
-                if (ct.IsCancellationRequested) return null;
-                _ = Dispatcher.Invoke(() => _rows[idx].Status = TestStatus.Running);
+                if (ct.IsCancellationRequested) break;
+
+                var s = strategies[idx];
+                _rows[idx].Status = TestStatus.Running;
                 AppendLog("INFO", $"→ {s.Name}");
 
                 var outcome = await App.Tester!.RunAsync(s, domains,
@@ -199,28 +200,22 @@ public partial class HomePage : UserControl
                     progress: null,
                     ct: ct);
 
-                if (ct.IsCancellationRequested) return null;
+                if (ct.IsCancellationRequested) break;
 
-                Dispatcher.Invoke(() =>
-                {
-                    var row = _rows[idx];
-                    row.Ping = outcome.AverageLatency == TimeSpan.Zero ? null : (int?)outcome.AverageLatency.TotalMilliseconds;
-                    row.Loss = outcome.Total > 0 ? 100.0 * outcome.Successes / outcome.Total : 100;
-                    row.Speed = outcome.AverageLatency == TimeSpan.Zero ? 0 : outcome.AverageLatency.TotalMilliseconds;
-                    row.Status = outcome.Error is null
-                        ? (outcome.Successes == outcome.Total ? TestStatus.Success : TestStatus.Failure)
-                        : TestStatus.Failure;
-                });
-                return outcome;
-            }).ToList();
+                var row = _rows[idx];
+                row.Ping = outcome.AverageLatency == TimeSpan.Zero ? null : (int?)outcome.AverageLatency.TotalMilliseconds;
+                row.Loss = outcome.Total > 0 ? 100.0 * outcome.Successes / outcome.Total : 100;
+                row.Speed = outcome.AverageLatency == TimeSpan.Zero ? 0 : outcome.AverageLatency.TotalMilliseconds;
+                row.Status = outcome.Error is null
+                    ? (outcome.Successes == outcome.Total ? TestStatus.Success : TestStatus.Failure)
+                    : TestStatus.Failure;
 
-            var outcomes = await Task.WhenAll(tasks);
+                outcomes.Add(outcome);
+            }
 
-            // Выбираем лучшую: максимум Successes, потом минимум latency.
             StrategyTester.StrategyTestOutcome? best = null;
             foreach (var o in outcomes)
             {
-                if (o is null) continue;
                 if (o.Error is not null) continue;
                 if (best is null
                     || o.Successes > best.Successes
@@ -233,7 +228,6 @@ public partial class HomePage : UserControl
                 AppendLog("SUCCESS", $"Лучшая стратегия: {best.Strategy.Name} ({best.Successes}/{best.Total}).");
                 BestStrategyText.Text = $"Лучшая: {best.Strategy.Name}";
 
-                // Подсветим её в ComboBox.
                 foreach (var item in StrategyCombo.Items)
                 {
                     if (item is ComboBoxItem cbi && (cbi.Tag as string) == best.Strategy.Id)
@@ -267,37 +261,21 @@ public partial class HomePage : UserControl
         }
     }
 
-    // =================== Лог ===================
-
     private void ClearLog_Click(object sender, RoutedEventArgs e)
     {
         LogPanel.Children.Clear();
     }
 
-    private enum LogLevel { Info, Warn, Error, Success }
-    private void Log(LogLevel level, string msg)
-    {
-        var color = level switch
-        {
-            LogLevel.Info => (Brush)FindResource("AccentBrush"),
-            LogLevel.Warn => (Brush)FindResource("WarnBrush"),
-            LogLevel.Error => (Brush)FindResource("DangerBrush"),
-            LogLevel.Success => (Brush)FindResource("SuccessBrush"),
-            _ => (Brush)FindResource("TextBrush"),
-        };
-        var label = level switch
-        {
-            LogLevel.Info => "[INFO]   ",
-            LogLevel.Warn => "[WARN]   ",
-            LogLevel.Error => "[ERROR]  ",
-            LogLevel.Success => "[SUCCESS]",
-            _ => "         ",
-        };
-        AppendLogRaw(color, label, msg);
-    }
-
     private void AppendLog(string level, string msg)
     {
+        switch (level)
+        {
+            case "WARN": LogService.Warn(msg); break;
+            case "ERROR": LogService.Error(msg); break;
+            case "SUCCESS": LogService.Success(msg); break;
+            default: LogService.Info(msg); break;
+        }
+
         var color = level switch
         {
             "WARN" => (Brush)FindResource("WarnBrush"),
@@ -326,7 +304,6 @@ public partial class HomePage : UserControl
         tb.Inlines.Add(new Run(label) { Foreground = color });
         tb.Inlines.Add(new Run(" " + msg) { Foreground = (Brush)FindResource("TextBrush") });
         LogPanel.Children.Add(tb);
-        // Прокрутить вниз
         if (LogScroll is not null)
         {
             LogScroll.Dispatcher.InvokeAsync(() =>
