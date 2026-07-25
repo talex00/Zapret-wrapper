@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using ZapretWrapper.Models;
 using ZapretWrapper.Services;
@@ -24,43 +25,41 @@ public partial class HomePage : UserControl
         InitializeComponent();
         ResultsGrid.ItemsSource = _rows;
 
+        // Первая строка — замер без обхода. Без неё нельзя понять, что именно чинит стратегия.
+        _rows.Add(new StrategyTestRow { Name = "Без обхода (база)" });
         foreach (var s in StrategyCatalog.All)
-        {
-            _rows.Add(new StrategyTestRow
-            {
-                Name = s.Name,
-                Status = TestStatus.Pending,
-            });
-        }
+            _rows.Add(new StrategyTestRow { Name = s.Name });
 
         RefreshFromSettings();
 
-        Loaded += (_, _) => AppendLog("INFO", "Главная загружена. Выберите стратегию и нажмите «Запустить обход».");
+        Loaded += (_, _) => AppendLog("INFO", "Главная загружена. Выберите стратегию или нажмите «Тест всех».");
     }
 
     public void HandleResize(double windowWidth) { }
 
+    /// <summary>Перечитывает цели и выбранную стратегию из настроек (страницы переиспользуются).</summary>
     public void RefreshFromSettings()
     {
-        var domains = GetTargetDomains();
         TargetResourcesPanel.Children.Clear();
-        foreach (var d in domains)
+        foreach (var target in GetTargets())
         {
             var border = new Border { Style = (Style)FindResource("PillBorderStyle") };
-            border.Child = new TextBlock { Text = d };
+            border.Child = new TextBlock { Text = target.Name };
             TargetResourcesPanel.Children.Add(border);
         }
 
         var saved = SettingsService.Current.SelectedStrategyId;
-        if (!string.IsNullOrEmpty(saved))
+        if (!string.IsNullOrEmpty(saved)) SelectStrategyInCombo(saved);
+    }
+
+    private void SelectStrategyInCombo(string id)
+    {
+        foreach (var item in StrategyCombo.Items)
         {
-            foreach (var item in StrategyCombo.Items)
+            if (item is ComboBoxItem cbi && (cbi.Tag as string) == id)
             {
-                if (item is ComboBoxItem cbi && (cbi.Tag as string) == saved)
-                {
-                    StrategyCombo.SelectedItem = cbi;
-                    break;
-                }
+                StrategyCombo.SelectedItem = cbi;
+                return;
             }
         }
     }
@@ -70,21 +69,14 @@ public partial class HomePage : UserControl
         if (Window.GetWindow(this) is MainWindow mw) mw.RefreshStatus();
     }
 
-    private static List<string> GetTargetDomains()
-    {
-        var s = SettingsService.Current.TestDomains;
-        if (!string.IsNullOrWhiteSpace(s))
-            return s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .ToList();
-        return new() { "youtube.com", "discord.com", "instagram.com", "twitch.tv" };
-    }
+    private static IReadOnlyList<CheckTarget> GetTargets() =>
+        TargetCatalog.Resolve(SettingsService.Current.TestDomains);
 
     private void StrategyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (StrategyCombo.SelectedItem is ComboBoxItem cbi)
         {
-            var id = cbi.Tag as string;
-            SettingsService.Current.SelectedStrategyId = id;
+            SettingsService.Current.SelectedStrategyId = cbi.Tag as string;
             SettingsService.Save();
         }
     }
@@ -92,8 +84,7 @@ public partial class HomePage : UserControl
     private Strategy? GetSelectedStrategy()
     {
         if (StrategyCombo.SelectedItem is not ComboBoxItem cbi) return null;
-        var id = cbi.Tag as string;
-        return StrategyCatalog.FindById(id);
+        return StrategyCatalog.FindById(cbi.Tag as string);
     }
 
     private void Start_Click(object sender, RoutedEventArgs e)
@@ -116,14 +107,14 @@ public partial class HomePage : UserControl
             return;
         }
 
-        var ok = runner.Start(strategy);
-        if (!ok)
+        if (!runner.Start(strategy))
         {
             MessageBox.Show($"Не удалось запустить: {runner.LastError}",
                 "ZapretWrapper", MessageBoxButton.OK, MessageBoxImage.Error);
             AppendLog("ERROR", $"Запуск не удался: {runner.LastError}");
             return;
         }
+
         AppendLog("SUCCESS", $"Запущена стратегия «{strategy.Name}».");
         RefreshHeader();
     }
@@ -139,6 +130,7 @@ public partial class HomePage : UserControl
                 "ZapretWrapper", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
+
         AppendLog("INFO", "winws2 остановлен.");
         RefreshHeader();
     }
@@ -146,7 +138,8 @@ public partial class HomePage : UserControl
     private async void TestAll_Click(object sender, RoutedEventArgs e)
     {
         var runner = App.Runner;
-        if (runner is null) return;
+        var tester = App.Tester;
+        if (runner is null || tester is null) return;
 
         if (!runner.IsValid)
         {
@@ -157,7 +150,7 @@ public partial class HomePage : UserControl
 
         if (runner.IsRunning)
         {
-            MessageBox.Show("Сначала остановите текущий запуск — тестирование само управляет winws2.",
+            MessageBox.Show("Сначала остановите текущий запуск: тест сам управляет winws2.",
                 "ZapretWrapper", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -166,82 +159,47 @@ public partial class HomePage : UserControl
         StartButton.IsEnabled = false;
         StopButton.IsEnabled = false;
         BestStrategyText.Text = "";
+        ResetRings();
 
         _testCts = new CancellationTokenSource();
         var ct = _testCts.Token;
-        var domains = GetTargetDomains();
+
+        var targets = GetTargets();
         var strategies = StrategyCatalog.All.ToList();
+        foreach (var row in _rows) row.Reset();
 
-        for (int i = 0; i < _rows.Count; i++)
-        {
-            _rows[i].Status = TestStatus.Pending;
-            _rows[i].Ping = null;
-            _rows[i].Loss = null;
-            _rows[i].Speed = null;
-        }
-
-        AppendLog("INFO", $"Запуск тестирования {strategies.Count} стратегий по {domains.Count} доменам...");
+        var probeCount = targets.Sum(t => t.Probes.Count);
+        AppendLog("INFO",
+            $"Тест: {strategies.Count} стратегий + база, по {probeCount} проверок на каждую.");
 
         var outcomes = new List<StrategyTester.StrategyTestOutcome>();
 
         try
         {
-            for (int idx = 0; idx < strategies.Count; idx++)
+            // Строго последовательно: winws2 один на всё приложение.
+            for (int idx = 0; idx < _rows.Count; idx++)
             {
-                if (ct.IsCancellationRequested) break;
-
-                var s = strategies[idx];
-                _rows[idx].Status = TestStatus.Running;
-                AppendLog("INFO", $"→ {s.Name}");
-
-                var outcome = await App.Tester!.RunAsync(s, domains,
-                    attemptsPerDomain: 2,
-                    timeoutSeconds: 5,
-                    progress: null,
-                    ct: ct);
-
                 if (ct.IsCancellationRequested) break;
 
                 var row = _rows[idx];
-                row.Ping = outcome.AverageLatency == TimeSpan.Zero ? null : (int?)outcome.AverageLatency.TotalMilliseconds;
-                row.Loss = outcome.Total > 0 ? 100.0 * outcome.Successes / outcome.Total : 100;
-                row.Speed = outcome.AverageLatency == TimeSpan.Zero ? 0 : outcome.AverageLatency.TotalMilliseconds;
-                row.Status = outcome.Error is null
-                    ? (outcome.Successes == outcome.Total ? TestStatus.Success : TestStatus.Failure)
-                    : TestStatus.Failure;
+                row.Status = TestStatus.Running;
 
-                outcomes.Add(outcome);
-            }
-
-            StrategyTester.StrategyTestOutcome? best = null;
-            foreach (var o in outcomes)
-            {
-                if (o.Error is not null) continue;
-                if (best is null
-                    || o.Successes > best.Successes
-                    || (o.Successes == best.Successes && o.AverageLatency < best.AverageLatency))
-                    best = o;
-            }
-
-            if (best is not null)
-            {
-                AppendLog("SUCCESS", $"Лучшая стратегия: {best.Strategy.Name} ({best.Successes}/{best.Total}).");
-                BestStrategyText.Text = $"Лучшая: {best.Strategy.Name}";
-
-                foreach (var item in StrategyCombo.Items)
+                var progress = new Progress<StrategyTester.StrategyTestProgress>(p =>
                 {
-                    if (item is ComboBoxItem cbi && (cbi.Tag as string) == best.Strategy.Id)
-                    {
-                        StrategyCombo.SelectedItem = cbi;
-                        break;
-                    }
-                }
+                    row.Details = $"{p.Completed}/{p.Total} — {p.ProbeTitle}";
+                });
+
+                var outcome = idx == 0
+                    ? await tester.RunBaselineAsync(targets, 6, progress, ct)
+                    : await tester.RunAsync(strategies[idx - 1], targets, 6, progress, ct);
+
+                if (ct.IsCancellationRequested) break;
+
+                ApplyOutcome(row, outcome);
+                if (idx > 0) outcomes.Add(outcome);
             }
-            else
-            {
-                AppendLog("WARN", "Ни одна стратегия не прошла тест.");
-                BestStrategyText.Text = "Не удалось подобрать стратегию";
-            }
+
+            ShowBest(outcomes);
         }
         catch (OperationCanceledException)
         {
@@ -258,13 +216,95 @@ public partial class HomePage : UserControl
             StopButton.IsEnabled = true;
             _testCts?.Dispose();
             _testCts = null;
+            RefreshHeader();
         }
     }
 
-    private void ClearLog_Click(object sender, RoutedEventArgs e)
+    private static void ApplyOutcome(StrategyTestRow row, StrategyTester.StrategyTestOutcome outcome)
     {
-        LogPanel.Children.Clear();
+        row.Ping = outcome.AverageLatency == TimeSpan.Zero
+            ? null
+            : (int)outcome.AverageLatency.TotalMilliseconds;
+        row.SuccessRate = outcome.Total > 0 ? outcome.SuccessRate : null;
+        row.Details = outcome.FailedSummary;
+        row.Status = outcome.Error is not null
+            ? TestStatus.Failure
+            : outcome.Successes == outcome.Total && outcome.Total > 0
+                ? TestStatus.Success
+                : outcome.Successes > 0
+                    ? TestStatus.Partial
+                    : TestStatus.Failure;
     }
+
+    private void ShowBest(List<StrategyTester.StrategyTestOutcome> outcomes)
+    {
+        StrategyTester.StrategyTestOutcome? best = null;
+        foreach (var o in outcomes)
+        {
+            if (o.Error is not null || o.Strategy is null) continue;
+            if (best is null
+                || o.Successes > best.Successes
+                || (o.Successes == best.Successes && o.AverageLatency < best.AverageLatency))
+                best = o;
+        }
+
+        if (best?.Strategy is null)
+        {
+            AppendLog("WARN", "Ни одна стратегия не прошла тест.");
+            BestStrategyText.Text = "Не удалось подобрать стратегию";
+            return;
+        }
+
+        AppendLog("SUCCESS",
+            $"Лучшая стратегия: {best.Strategy.Name} ({best.Successes}/{best.Total} проверок).");
+        BestStrategyText.Text = $"Лучшая: {best.Strategy.Name}";
+        SelectStrategyInCombo(best.Strategy.Id);
+        UpdateRings(best);
+    }
+
+    private void ResetRings()
+    {
+        PingRing.Value = "—"; PingRing.Progress = 0;
+        SuccessRing.Value = "—"; SuccessRing.Progress = 0;
+        ChecksRing.Value = "—"; ChecksRing.Progress = 0;
+    }
+
+    /// <summary>Кольца показывают реальные цифры лучшей стратегии, а не заглушки «—».</summary>
+    private void UpdateRings(StrategyTester.StrategyTestOutcome outcome)
+    {
+        var ms = outcome.AverageLatency.TotalMilliseconds;
+        PingRing.Value = ms > 0 ? $"{ms:0} мс" : "—";
+        PingRing.Progress = ms > 0 ? Math.Max(0, 1 - Math.Min(ms / 1000.0, 1)) : 0;
+
+        SuccessRing.Value = $"{outcome.SuccessRate:0}%";
+        SuccessRing.Progress = outcome.SuccessRate / 100.0;
+
+        var passed = outcome.Results.Count(r => r.Ok);
+        var total = outcome.Results.Count;
+        ChecksRing.Value = $"{passed}/{total}";
+        ChecksRing.Progress = total > 0 ? (double)passed / total : 0;
+    }
+
+    /// <summary>
+    /// Без этого DataGrid «съедал» колёсико мыши и страница переставала скроллиться,
+    /// когда курсор оказывался над таблицей.
+    /// </summary>
+    private void ResultsGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Handled) return;
+        e.Handled = true;
+
+        var forwarded = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = UIElement.MouseWheelEvent,
+            Source = sender,
+        };
+
+        if (sender is FrameworkElement { Parent: UIElement parent })
+            parent.RaiseEvent(forwarded);
+    }
+
+    private void ClearLog_Click(object sender, RoutedEventArgs e) => LogPanel.Children.Clear();
 
     private void AppendLog(string level, string msg)
     {
@@ -290,26 +330,18 @@ public partial class HomePage : UserControl
             "SUCCESS" => "[SUCCESS]",
             _ => "[INFO]   ",
         };
-        AppendLogRaw(color, label, msg);
-    }
 
-    private void AppendLogRaw(Brush color, string label, string msg)
-    {
         var tb = new TextBlock
         {
             FontFamily = new FontFamily("Consolas"),
             FontSize = 12,
             Margin = new Thickness(0, 0, 0, 4),
+            TextWrapping = TextWrapping.Wrap,
         };
         tb.Inlines.Add(new Run(label) { Foreground = color });
         tb.Inlines.Add(new Run(" " + msg) { Foreground = (Brush)FindResource("TextBrush") });
         LogPanel.Children.Add(tb);
-        if (LogScroll is not null)
-        {
-            LogScroll.Dispatcher.InvokeAsync(() =>
-            {
-                LogScroll.ScrollToEnd();
-            });
-        }
+
+        LogScroll?.Dispatcher.InvokeAsync(() => LogScroll.ScrollToEnd());
     }
 }

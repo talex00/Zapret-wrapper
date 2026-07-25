@@ -52,7 +52,7 @@
             <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16" MinHeight="240">
                 <DockPanel LastChildFill="True">
                     <TextBlock DockPanel.Dock="Top"
-                               Text="Сетевая статистика"
+                               Text="Сетевая статистика (по лучшей стратегии)"
                                Style="{StaticResource TextCardTitleStyle}" />
                     <Grid Margin="0,4,0,0">
                         <Grid.ColumnDefinitions>
@@ -62,20 +62,23 @@
                         </Grid.ColumnDefinitions>
 
                         <Grid Grid.Column="0" Margin="8">
-                            <ctrl:MetricRing Value="—"
-                                             Caption="Пинг"
+                            <ctrl:MetricRing x:Name="PingRing"
+                                             Value="—"
+                                             Caption="Средний отклик"
                                              ArcBrush="{DynamicResource PingBrush}"
                                              Progress="0" />
                         </Grid>
                         <Grid Grid.Column="1" Margin="8">
-                            <ctrl:MetricRing Value="—"
-                                             Caption="Потери"
+                            <ctrl:MetricRing x:Name="SuccessRing"
+                                             Value="—"
+                                             Caption="Успешность"
                                              ArcBrush="{DynamicResource LossBrush}"
                                              Progress="0" />
                         </Grid>
                         <Grid Grid.Column="2" Margin="8">
-                            <ctrl:MetricRing Value="—"
-                                             Caption="Скорость"
+                            <ctrl:MetricRing x:Name="ChecksRing"
+                                             Value="—"
+                                             Caption="Проверки"
                                              ArcBrush="{DynamicResource SpeedBrush}"
                                              Progress="0" />
                         </Grid>
@@ -102,23 +105,38 @@
                                    VerticalAlignment="Center" />
                     </Grid>
 
-                    <DataGrid x:Name="ResultsGrid" AutoGenerateColumns="False">
+                    <!-- Скролл страницы над таблицей: собственный скролл DataGrid отключён,
+                         таблица растёт по высоте, а колёсико пробрасывается родителю. -->
+                    <DataGrid x:Name="ResultsGrid"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              HeadersVisibility="Column"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              PreviewMouseWheel="ResultsGrid_PreviewMouseWheel">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Название стратегии"
+                            <DataGridTextColumn Header="Стратегия"
                                                 Binding="{Binding Name}"
-                                                Width="2*" />
+                                                Width="1.4*" />
                             <DataGridTextColumn Header="Статус"
                                                 Binding="{Binding StatusText}"
-                                                Width="1.4*" />
-                            <DataGridTextColumn Header="Пинг (мс)"
+                                                Width="1*" />
+                            <DataGridTextColumn Header="Отклик"
                                                 Binding="{Binding PingText}"
-                                                Width="0.8*" />
-                            <DataGridTextColumn Header="Успех"
-                                                Binding="{Binding LossText}"
-                                                Width="0.8*" />
-                            <DataGridTextColumn Header="Среднее (мс)"
-                                                Binding="{Binding SpeedText}"
-                                                Width="1.1*" />
+                                                Width="0.7*" />
+                            <DataGridTextColumn Header="Успешно"
+                                                Binding="{Binding SuccessText}"
+                                                Width="0.7*" />
+                            <DataGridTemplateColumn Header="Детали" Width="2.6*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Details}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,4,0,4" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
