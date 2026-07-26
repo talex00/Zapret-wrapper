@@ -27,6 +27,18 @@ public static class FlowsealLoader
     private const string GameFilterTcp = "1024-65535";
     private const string GameFilterUdp = "1024-65535";
 
+    /// <summary>
+    /// Корень сборки относительно рабочей папки процесса.
+    ///
+    /// winws.exe собран под cygwin и декодирует командную строку в своей локали, а не
+    /// в UTF-8. Абсолютный путь вроде C:\Users\...\Документы\zapret\lists\... приезжал
+    /// к нему искажённым, файлы не открывались (cannot access ipset file) и процесс умирал.
+    ///
+    /// Процесс всегда стартует из bin (там cygwin1.dll), поэтому корень сборки — это «..\»,
+    /// и все пути в аргументах остаются чисто латинскими: ..\lists\list-general.txt.
+    /// </summary>
+    private const string RootPrefix = "..\\";
+
     /// <summary>Служебные .bat, в которых стратегий нет.</summary>
     private static readonly string[] SkipFiles = { "service.bat" };
 
@@ -65,7 +77,7 @@ public static class FlowsealLoader
 
                 try
                 {
-                    var strategy = Parse(file, root!, gameFilter);
+                    var strategy = Parse(file, gameFilter);
                     if (strategy is not null) result.Strategies.Add(strategy);
                     else result.Skipped.Add(name);
                 }
@@ -84,7 +96,7 @@ public static class FlowsealLoader
         return result;
     }
 
-    private static Strategy? Parse(string file, string root, bool gameFilter)
+    private static Strategy? Parse(string file, bool gameFilter)
     {
         var raw = File.ReadAllText(file);
         if (raw.IndexOf("winws", StringComparison.OrdinalIgnoreCase) < 0) return null;
@@ -105,11 +117,11 @@ public static class FlowsealLoader
 
             if (TryReadSet(line, out var key, out var value))
             {
-                vars[key] = Expand(value, vars, root, fileName, gameFilter);
+                vars[key] = Expand(value, vars, fileName, gameFilter);
                 continue;
             }
 
-            var expanded = Expand(line, vars, root, fileName, gameFilter);
+            var expanded = Expand(line, vars, fileName, gameFilter);
             if (expanded.IndexOf("winws", StringComparison.OrdinalIgnoreCase) < 0) continue;
 
             var parsed = ExtractArgs(expanded);
@@ -176,17 +188,14 @@ public static class FlowsealLoader
     }
 
     /// <summary>
-    /// Раскрывает %~dp0 (корень сборки), %~n0 (имя файла), переменные set
-    /// и игровой фильтр. GameFilter* в самом репозитории заполняет service.bat,
-    /// у нас его нет — подставляем сами.
+    /// Раскрывает %~dp0 (корень сборки — как относительный путь), %~n0 (имя файла),
+    /// переменные set и игровой фильтр. GameFilter* в самом репозитории заполняет
+    /// service.bat, у нас его нет — подставляем сами.
     /// </summary>
     private static string Expand(
-        string text, Dictionary<string, string> vars, string root, string fileName, bool gameFilter)
+        string text, Dictionary<string, string> vars, string fileName, bool gameFilter)
     {
-        var rootWithSlash = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                            + Path.DirectorySeparatorChar;
-
-        text = text.Replace("%~dp0", rootWithSlash, StringComparison.OrdinalIgnoreCase);
+        text = text.Replace("%~dp0", RootPrefix, StringComparison.OrdinalIgnoreCase);
         text = text.Replace("%~nx0", fileName + ".bat", StringComparison.OrdinalIgnoreCase);
         text = text.Replace("%~n0", fileName, StringComparison.OrdinalIgnoreCase);
 
