@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:ZapretWrapper.ViewModels"
         xmlns:views="clr-namespace:ZapretWrapper.Views"
-        Title="Zapret GUI"
+        Title="Zapret Wrapper"
+        Icon="{StaticResource AppLogo}"
         Width="1380" Height="880"
         MinWidth="1100" MinHeight="680"
         WindowStartupLocation="CenterScreen"
@@ -30,20 +31,21 @@
                 <!-- Brand -->
                 <StackPanel Grid.Row="0" Margin="20,20,20,24">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="ZapretGUI"
-                                   FontSize="20"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource AccentBrush}" />
-                        <Border Width="20" Height="20"
-                                Margin="8,4,0,0"
-                                Background="{DynamicResource AccentBrush}"
-                                CornerRadius="4">
-                            <TextBlock Text="🛡"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource AccentTextBrush}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Border>
+                        <!-- Векторный логотип из Styles/Logo.xaml -->
+                        <Image Source="{StaticResource AppLogo}"
+                               Width="32" Height="38"
+                               VerticalAlignment="Center"
+                               SnapsToDevicePixels="False" />
+                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="Zapret"
+                                       FontSize="19"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                            <TextBlock Text="Wrapper"
+                                       FontSize="13"
+                                       Margin="0,-2,0,0"
+                                       Style="{StaticResource TextMutedStyle}" />
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
