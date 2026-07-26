@@ -7,18 +7,23 @@ using ZapretWrapper.Services;
 namespace ZapretWrapper.Models;
 
 /// <summary>
-/// Список стратегий. Источники по приоритету:
-/// 1) .cmd/.bat пресеты из папки (так устроен zapret-win-bundle);
-/// 2) переменная NFQWS2_OPT из config / config.default плюс матрица методов
-///    (так устроен чистый zapret2: готовый конфиг один, а подбирать нужно из многих);
-/// 3) только матрица методов из blockcheck2.d — если нет ни пресетов, ни конфига.
+/// Список стратегий. Сначала определяем сборку (ZapretBackend), потом берём
+/// стратегии тем способом, который для этой сборки осмыслен:
+///
+/// Flowseal/zapret-discord-youtube:
+///   general*.bat в корне — два десятка готовых стратегий от автора сборки.
+///   Матрицу методов zapret2 здесь подмешивать нельзя: там аргументы --lua-desync,
+///   а здесь старый winws.exe с --dpi-desync — он умрёт на неизвестном ключе.
+///
+/// bol-van/zapret2 — три уровня, как и было:
+///   1) .cmd/.bat пресеты (zapret-win-bundle);
+///   2) NFQWS2_OPT из config / config.default плюс матрица методов;
+///   3) только матрица методов blockcheck2.d.
 ///
 /// Поверх этого живёт подобранный профиль — результат теста, собранный из победителей
 /// по отдельным протоколам. Он всегда первый в списке и переживает Reload.
-///
-/// Своих выдуманных пресетов больше нет: жёсткий список с путями вроде
-/// files/list-youtube.txt и init.d/windivert.filter/* расходится с реальной сборкой,
-/// и winws2 завершается сразу после запуска.
+/// Для flowseal склеивание отключено: каждый .bat и так содержит девять профилей
+/// через --new и покрывает TCP, QUIC, Discord UDP и игры сразу.
 /// </summary>
 public static class StrategyCatalog
 {
@@ -26,8 +31,14 @@ public static class StrategyCatalog
     private static string? _loadedFrom;
     private static Strategy? _combined;
 
-    /// <summary>Кандидаты из матрицы blockcheck2.d — работают на любой сборке zapret2.</summary>
+    /// <summary>Кандидаты из матрицы blockcheck2.d — только для zapret2.</summary>
     public static IReadOnlyList<Strategy> BuiltIn => StrategyMatrix.All;
+
+    /// <summary>Сборка, определённая при последнем Reload.</summary>
+    public static ZapretFlavor Flavor { get; private set; } = ZapretFlavor.Unknown;
+
+    /// <summary>Имеет ли смысл склеивать победителей по протоколам в один профиль.</summary>
+    public static bool SupportsCombining => Flavor == ZapretFlavor.Zapret2;
 
     public static IReadOnlyList<Strategy> All
     {
@@ -55,7 +66,7 @@ public static class StrategyCatalog
 
     public static event EventHandler? Changed;
 
-    /// <summary>Перечитывает стратегии из папки zapret. Дешёво: вызывается при переходе между страницами.</summary>
+    /// <summary>Перечитывает стратегии из папки zapret.</summary>
     public static void Reload(bool force = false)
     {
         var path = SettingsService.Current.ZapretPath;
@@ -64,7 +75,47 @@ public static class StrategyCatalog
             return;
 
         _loadedFrom = path;
+        Flavor = ZapretBackend.Detect(path);
 
+        if (Flavor == ZapretFlavor.Flowseal)
+        {
+            LoadFlowseal(path);
+            return;
+        }
+
+        LoadZapret2(path);
+    }
+
+    private static void LoadFlowseal(string? path)
+    {
+        var loaded = FlowsealLoader.Load(path);
+
+        if (loaded.Strategies.Count > 0)
+        {
+            _all = loaded.Strategies;
+            IsFromFolder = true;
+            SourceDescription = $"zapret-discord-youtube: стратегий {loaded.Strategies.Count}";
+            if (loaded.Skipped.Count > 0)
+                SourceDescription += $" (пропущено без вызова winws: {loaded.Skipped.Count})";
+
+            LogService.Info("Стратегии загружены из general*.bat: " + loaded.Strategies.Count);
+            Finish();
+            return;
+        }
+
+        // Папка опознана как flowseal, но файлов стратегий нет. Матрица тут не поможет —
+        // лучше пустой список и внятное сообщение, чем два десятка заведомо нерабочих.
+        _all = new List<Strategy>();
+        IsFromFolder = false;
+        SourceDescription = "сборка zapret-discord-youtube опознана, но general*.bat не найдены";
+        if (loaded.Error is not null) SourceDescription += ": " + loaded.Error;
+
+        LogService.Warn(SourceDescription);
+        Finish();
+    }
+
+    private static void LoadZapret2(string? path)
+    {
         // 1) .cmd/.bat пресеты (zapret-win-bundle и сборки на его основе).
         var fromFiles = StrategyLoader.Load(path);
         if (fromFiles.Strategies.Count > 0)
@@ -80,8 +131,7 @@ public static class StrategyCatalog
             return;
         }
 
-        // 2) Чистый zapret2: .cmd-файлов нет, стратегия живёт в config (NFQWS2_OPT).
-        // Одного конфига для подбора мало, поэтому добавляем матрицу методов.
+        // 2) Чистый zapret2: стратегия живёт в config (NFQWS2_OPT).
         var fromConfig = ZapretConfigLoader.Load(path);
         if (fromConfig.Strategy is not null)
         {
@@ -126,6 +176,13 @@ public static class StrategyCatalog
     {
         if (_combined is null) return;
 
+        // Собранный профиль от другой сборки несовместим с текущим бинарником.
+        if (!SupportsCombining)
+        {
+            _combined = null;
+            return;
+        }
+
         _all.RemoveAll(s => StrategyProfileBuilder.IsCombined(s.Id));
         _all.Insert(0, _combined);
     }
@@ -133,7 +190,14 @@ public static class StrategyCatalog
     public static Strategy? FindById(string? id)
     {
         if (string.IsNullOrEmpty(id)) return null;
-        return All.FirstOrDefault(s => s.Id == id)
-               ?? StrategyMatrix.All.FirstOrDefault(s => s.Id == id);
+
+        var found = All.FirstOrDefault(s => s.Id == id);
+        if (found is not null) return found;
+
+        // По идентификатору из настроек может прийти стратегия другой сборки —
+        // подставлять её вслепую опасно, поэтому только для zapret2.
+        return Flavor == ZapretFlavor.Zapret2
+            ? StrategyMatrix.All.FirstOrDefault(s => s.Id == id)
+            : null;
     }
 }
