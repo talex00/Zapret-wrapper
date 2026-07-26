@@ -132,6 +132,11 @@ public class ZapretRunner : IDisposable
             // ipset-exclude-user.txt winws не ругается, а сразу завершает работу.
             HostlistService.EnsureUserFiles(path);
 
+            // Два winws одновременно — гарантированно сломанный обход: фильтры WinDivert
+            // конкурируют, пакеты либо обрабатываются дважды, либо не обрабатываются.
+            // Служба zapret или ручной запуск general*.bat — самый частый источник.
+            Diagnostics.StopForeignWinws();
+
             try
             {
                 var psi = new ProcessStartInfo
