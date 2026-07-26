@@ -26,6 +26,10 @@ public static class TargetCatalog
                 new("YouTube — API (HTTPS 204)", ProbeKind.Http, "www.youtube.com", 443, "https://www.youtube.com/generate_204"),
                 // Без этого хоста страница откроется, а видео крутиться не будет.
                 new("YouTube — видео-CDN (TLS)", ProbeKind.Tls, "redirector.googlevideo.com"),
+                // QUIC: без этой пробы QUIC-методы нечем измерять.
+                new("YouTube — QUIC/HTTP3 (UDP 443)", ProbeKind.Quic, "www.youtube.com", 443, null, 400, false),
+                // Плайн HTTP на порту 80 — точка приложения методов --filter-l7=http.
+                new("YouTube — HTTP без TLS (порт 80)", ProbeKind.Http80, "www.youtube.com", 80, null, 400, false),
             },
         },
         new()
@@ -39,6 +43,7 @@ public static class TargetCatalog
                 new("Discord — голос: сигналинг (TLS)", ProbeKind.Tls, "gateway.discord.gg"),
                 new("Discord — голос: UDP/RTP (STUN)", ProbeKind.UdpStun, "stun.l.google.com", 19302),
                 new("Discord — картинки/CDN (TLS)", ProbeKind.Tls, "cdn.discordapp.com", 443, null, 400, false),
+                new("Discord — QUIC/HTTP3 (UDP 443)", ProbeKind.Quic, "discord.com", 443, null, 400, false),
             },
         },
         new()
@@ -96,6 +101,8 @@ public static class TargetCatalog
         {
             new(host + " — TLS", ProbeKind.Tls, host),
             new(host + " — HTTPS", ProbeKind.Http, host),
+            new(host + " — QUIC (UDP 443)", ProbeKind.Quic, host, 443, null, 400, false),
+            new(host + " — HTTP без TLS (порт 80)", ProbeKind.Http80, host, 80, null, 400, false),
         },
     };
 }
