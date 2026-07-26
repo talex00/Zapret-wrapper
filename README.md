@@ -40,15 +40,31 @@ zapret обходит DPI-блокировки YouTube, Discord и других 
 
 ## Установка
 
-1. Скачайте zip из [Releases](https://github.com/talex00/Zapret-wrapper/releases) и распакуйте.
+1. Скачайте архив из [Releases](https://github.com/talex00/Zapret-wrapper/releases) и распакуйте. Их два:
+
+   | Архив | Размер | Требования |
+   | --- | --- | --- |
+   | `...-win-x64-lite.zip` | пара мегабайт | [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0/runtime) x64 |
+   | `...-win-x64.zip` | десятки мегабайт | ничего, .NET встроен внутрь |
+
 2. Запустите `ZapretWrapper.exe`. Программа запросит права администратора: без них WinDivert
    не может поставить сетевой фильтр.
 3. На странице «Настройки» укажите папку со своей сборкой zapret.
 4. На странице «Тестирование» нажмите запуск теста и дождитесь победителя, затем включайте обход
    на главной.
 
-Билд из релиза self-contained: .NET ставить не нужно. Он не подписан, поэтому SmartScreen
-покажет предупреждение о неизвестном издателе.
+Ни один из билдов не подписан, поэтому SmartScreen покажет предупреждение о неизвестном издателе.
+
+### Почему self-contained версия такая большая
+
+Сама программа занимает около мегабайта. Остальное — целиком уложенные внутрь CoreCLR и WPF
+(тот самый рантайм, который в lite-варианте берётся из системы). Обрезать лишнее триммингом нельзя:
+`PublishTrimmed` для WPF не поддерживается, так как XAML ищет типы рефлексией и обрезанное приложение
+падает уже на запуске. Зато в сборке отключён ReadyToRun и включено сжатие внутри single-file —
+именно поэтому архив заметно меньше, чем был бы при настройках по умолчанию. Цена — первый запуск
+на пару секунд дольше: файлы распаковываются во временную папку.
+
+Если важен размер — берите lite и один раз поставьте .NET Desktop Runtime.
 
 ## Как работает тестер
 
@@ -85,13 +101,23 @@ zapret обходит DPI-блокировки YouTube, Discord и других 
 
 Требуется .NET 8 SDK и Windows 10/11 x64.
 
+Лёгкий вариант (нужен установленный .NET 8 Desktop Runtime):
+
 ```powershell
 dotnet publish src/ZapretWrapper/ZapretWrapper.csproj -c Release -r win-x64 `
-  --self-contained true -p:PublishSingleFile=true -o publish
+  --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o publish-lite
+```
+
+Со встроенным .NET:
+
+```powershell
+dotnet publish src/ZapretWrapper/ZapretWrapper.csproj -c Release -r win-x64 `
+  --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:EnableCompressionInSingleFile=true -p:PublishReadyToRun=false -p:DebugType=none -o publish-full
 ```
 
 Релизы собирает GitHub Actions (`.github/workflows/release.yml`) по пушу тега `v*` или вручную
-из вкладки Actions.
+из вкладки Actions — оба архива сразу, с выводом их размеров в лог сборки.
 
 ## Структура проекта
 
