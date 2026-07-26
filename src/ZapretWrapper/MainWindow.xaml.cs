@@ -75,8 +75,20 @@ public partial class MainWindow : Window
             _pageCache[page] = target;
         }
 
-        if (target is HomePage hp)
-            hp.RefreshFromSettings();
+        // Страницы кешируются, поэтому изменённые настройки (путь к zapret, цели)
+        // нужно подхватывать при каждом возврате на страницу.
+        switch (target)
+        {
+            case HomePage hp:
+                hp.RefreshFromSettings();
+                break;
+            case TestingPage tp:
+                tp.RefreshFromSettings();
+                break;
+            case StrategiesPage sp:
+                sp.Refresh();
+                break;
+        }
 
         PageHost.Content = target;
     }
