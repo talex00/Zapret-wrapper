@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using ZapretWrapper.Models;
@@ -13,12 +14,20 @@ using ZapretWrapper.ViewModels;
 namespace ZapretWrapper.Views;
 
 /// <summary>
-/// Вся механика тестирования живёт здесь, а не на главной: главная отвечает только
-/// за быстрый запуск обхода.
+/// Подбор стратегии в три шага — так же, как это делает blockcheck2:
+///
+/// 0. База без обхода. По её результатам видно, что именно заблокировано: TCP/TLS, HTTP или QUIC.
+///    Методы для протоколов, которые и так работают, не перебираются вообще.
+/// 1. Быстрый прогон: каждый кандидат проверяется двумя пробами, которые упали на базе.
+/// 2. Полная проверка выживших — только по своему протоколу.
+/// 3. Победители каждого протокола склеиваются в один профиль через --new и проверяются целиком.
 /// </summary>
 public partial class TestingPage : UserControl
 {
+    private const int ProbeTimeoutSeconds = 6;
+
     private readonly ObservableCollection<StrategyTestRow> _rows = new();
+    private readonly List<Strategy> _strategies = new();
     private CancellationTokenSource? _cts;
     private bool _isRunning;
 
@@ -54,20 +63,27 @@ public partial class TestingPage : UserControl
             TargetsPanel.Children.Add(pill);
         }
 
+        BuildRows();
+
         var probeCount = GetTargets().Sum(t => t.Probes.Count);
         SourceText.Text =
-            $"Стратегий к проверке: {StrategyCatalog.All.Count} — {StrategyCatalog.SourceDescription}. "
-            + $"Проверок на каждую стратегию: {probeCount}.";
-
-        BuildRows();
+            $"Кандидатов: {_strategies.Count} — {StrategyCatalog.SourceDescription}. "
+            + $"Проверок в полном прогоне: {probeCount}. "
+            + "Сначала идёт база без обхода, затем быстрый отбор, затем полная проверка выживших.";
     }
 
     private void BuildRows()
     {
         _rows.Clear();
+        _strategies.Clear();
+
         _rows.Add(new StrategyTestRow { Name = "Без обхода (база)" });
-        foreach (var s in StrategyCatalog.All)
-            _rows.Add(new StrategyTestRow { Name = s.Name });
+
+        foreach (var strategy in StrategyCatalog.TestCandidates)
+        {
+            _strategies.Add(strategy);
+            _rows.Add(new StrategyTestRow { Name = strategy.Name });
+        }
     }
 
     private static IReadOnlyList<CheckTarget> GetTargets() =>
@@ -113,80 +129,124 @@ public partial class TestingPage : UserControl
             runner.Stop();
         }
 
-        var strategies = StrategyCatalog.All.ToList();
-        if (strategies.Count == 0)
+        BuildRows();
+
+        if (_strategies.Count == 0)
         {
             MessageBox.Show("Стратегий не найдено: проверьте папку с zapret в Настройках.",
                 "ZapretWrapper", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        BuildRows();
         BestStrategyText.Text = "";
         ResetRings();
         SetRunningState(true);
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-
         var targets = GetTargets();
-        var outcomes = new List<StrategyTester.StrategyTestOutcome>();
-
-        LogService.Info($"Тест: {strategies.Count} стратегий + база.");
 
         try
         {
-            // Строго последовательно: winws2 один на всё приложение.
-            for (int idx = 0; idx < _rows.Count; idx++)
+            // ---- Фаза 0: база без обхода ----
+            var baseRow = _rows[0];
+            baseRow.Status = TestStatus.Running;
+            ProgressText.Text = "Проверяю, что не работает без обхода…";
+
+            var baseline = await tester.RunBaselineAsync(targets, ProbeTimeoutSeconds, MakeProgress(baseRow, "база"), ct);
+            ApplyOutcome(baseRow, baseline);
+
+            var blocked = StrategyPlan.BlockedProtocols(baseline.Results);
+
+            if (ct.IsCancellationRequested) return;
+
+            if (blocked.Count == 0)
+            {
+                ProgressText.Text = "Всё работает и без обхода — подбирать нечего.";
+                BestStrategyText.Text = "Обход не требуется";
+                LogService.Success("База прошла полностью: блокировки не обнаружено.");
+                MarkRest("пропущено: блокировки не обнаружено");
+                UpdateRings(baseline);
+                return;
+            }
+
+            LogService.Info("Заблокировано: " +
+                string.Join(", ", blocked.Select(StrategyPlan.Label)));
+
+            // ---- Фаза 1: быстрый отбор ----
+            var survivors = new List<(Strategy Strategy, StrategyProtocol Protocol, int Index)>();
+
+            for (int i = 0; i < _strategies.Count; i++)
             {
                 if (ct.IsCancellationRequested) break;
 
-                var row = _rows[idx];
-                row.Status = TestStatus.Running;
+                var strategy = _strategies[i];
+                var row = _rows[i + 1];
+                var protocol = StrategyPlan.Detect(strategy);
 
-                var progress = new Progress<StrategyTester.StrategyTestProgress>(p =>
+                if (protocol != StrategyProtocol.Mixed && !blocked.Contains(protocol))
                 {
-                    row.Details = $"{p.Completed}/{p.Total} — {p.ProbeTitle}";
-                    ProgressText.Text = $"{row.Name}: {p.Completed}/{p.Total} — {p.ProbeTitle}";
-                });
-
-                StrategyTester.StrategyTestOutcome outcome;
-                try
-                {
-                    outcome = idx == 0
-                        ? await tester.RunBaselineAsync(targets, 6, progress, ct)
-                        : await tester.RunAsync(strategies[idx - 1], targets, 6, progress, ct);
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    // Сбой одной стратегии не должен обрывать весь прогон.
-                    LogService.Error($"«{row.Name}»: {ex.Message}");
-                    row.Status = TestStatus.Failure;
-                    row.Details = "ошибка: " + ex.Message;
+                    row.Details = $"пропущено: {StrategyPlan.Label(protocol)} не заблокирован";
                     continue;
                 }
 
-                ApplyOutcome(row, outcome);
-                if (idx > 0) outcomes.Add(outcome);
+                var quick = StrategyPlan.QuickTargets(targets, baseline.Results, protocol);
+                if (quick.Count == 0)
+                {
+                    row.Details = "пропущено: нет подходящих проверок";
+                    continue;
+                }
 
+                row.Status = TestStatus.Running;
+                var outcome = await RunSafeAsync(tester, strategy, quick, row, "быстрый прогон", ct);
+                if (outcome is null) continue;
+
+                ApplyOutcome(row, outcome);
+                row.Details = "быстрый прогон: " + outcome.FailedSummary;
+
+                if (outcome.Error is null && outcome.Total > 0 && outcome.Successes == outcome.Total)
+                    survivors.Add((strategy, protocol, i));
+            }
+
+            LogService.Info($"Быстрый отбор прошли: {survivors.Count}.");
+
+            // ---- Фаза 2: полная проверка выживших ----
+            var best = new Dictionary<StrategyProtocol, StrategyTester.StrategyTestOutcome>();
+
+            foreach (var (strategy, protocol, index) in survivors)
+            {
                 if (ct.IsCancellationRequested) break;
+
+                var row = _rows[index + 1];
+                var full = StrategyPlan.ProtocolTargets(targets, protocol);
+                if (full.Count == 0) continue;
+
+                row.Status = TestStatus.Running;
+                var outcome = await RunSafeAsync(tester, strategy, full, row, "полная проверка", ct);
+                if (outcome is null) continue;
+
+                ApplyOutcome(row, outcome);
+
+                if (outcome.Error is not null || outcome.Total == 0 || outcome.Successes != outcome.Total)
+                    continue;
+
+                if (!best.TryGetValue(protocol, out var current)
+                    || outcome.AverageLatency < current.AverageLatency)
+                    best[protocol] = outcome;
             }
 
             if (ct.IsCancellationRequested)
             {
                 ProgressText.Text = "Тестирование остановлено. Уже проверенные стратегии остались в таблице.";
-                LogService.Info("Тестирование прервано пользователем.");
-                ShowBest(outcomes);
+                LogService.Info("Тестирование прервано пользователем.";
             }
-            else
-            {
-                ProgressText.Text = "Тестирование завершено.";
-                ShowBest(outcomes);
-            }
+
+            // ---- Фаза 3: итоговый профиль ----
+            await FinishAsync(tester, best, blocked, targets, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            ProgressText.Text = "Тестирование остановлено.";
         }
         catch (Exception ex)
         {
@@ -214,6 +274,125 @@ public partial class TestingPage : UserControl
         }
     }
 
+    /// <summary>Склеивает победителей в один профиль и проверяет его на всех целях.</summary>
+    private async Task FinishAsync(
+        StrategyTester tester,
+        Dictionary<StrategyProtocol, StrategyTester.StrategyTestOutcome> best,
+        HashSet<StrategyProtocol> blocked,
+        IReadOnlyList<CheckTarget> targets,
+        CancellationToken ct)
+    {
+        Strategy? final = null;
+
+        // Стратегия из config проверялась сразу на всё: если она вытянула — склеивать нечего.
+        if (best.TryGetValue(StrategyProtocol.Mixed, out var mixed) && mixed.Strategy is not null)
+        {
+            final = mixed.Strategy;
+        }
+        else
+        {
+            var parts = new List<Strategy>();
+            foreach (var protocol in new[] { StrategyProtocol.Tls, StrategyProtocol.Http, StrategyProtocol.Quic })
+            {
+                if (!blocked.Contains(protocol)) continue;
+                if (best.TryGetValue(protocol, out var outcome) && outcome.Strategy is not null)
+                    parts.Add(outcome.Strategy);
+                else
+                    LogService.Warn($"Для {StrategyPlan.Label(protocol)} рабочего метода не нашлось.");
+            }
+
+            if (parts.Count > 0) final = StrategyProfileBuilder.Build(parts);
+        }
+
+        if (final is null)
+        {
+            BestStrategyText.Text = "Не удалось подобрать стратегию";
+            ProgressText.Text = "Ни один метод не закрыл проверки целиком.";
+            LogService.Warn("Ни одна стратегия не прошла тест.");
+            return;
+        }
+
+        var isCombined = StrategyProfileBuilder.IsCombined(final.Id);
+        if (isCombined) StrategyCatalog.SetCombined(final);
+
+        // Итоговая проверка целиком: склейка могла повести себя иначе, чем каждая часть отдельно.
+        StrategyTestRow row;
+        var existing = _strategies.FindIndex(s => s.Id == final.Id);
+        if (existing >= 0)
+        {
+            row = _rows[existing + 1];
+        }
+        else
+        {
+            row = new StrategyTestRow { Name = final.Name };
+            _rows.Add(row);
+        }
+
+        row.Reset();
+        row.Status = TestStatus.Running;
+
+        var verify = await RunSafeAsync(tester, final, targets, row, "итоговая проверка", ct);
+        if (verify is not null)
+        {
+            ApplyOutcome(row, verify);
+            UpdateRings(verify);
+        }
+
+        LastBestStrategyName = final.Name;
+        BestStrategyText.Text = "Итог: " + final.Name;
+
+        // Итоговый профиль сразу становится выбранным — на главной осталось нажать «Запустить».
+        SettingsService.Current.SelectedStrategyId = final.Id;
+        SettingsService.Save();
+
+        ProgressText.Text = "Тестирование завершено.";
+        LogService.Success("Итоговая стратегия: " + final.Name + ". Аргументы: " + string.Join(" ", final.Args));
+    }
+
+    private Progress<StrategyTester.StrategyTestProgress> MakeProgress(StrategyTestRow row, string phase)
+    {
+        return new Progress<StrategyTester.StrategyTestProgress>(p =>
+        {
+            row.Details = $"{phase}: {p.Completed}/{p.Total} — {p.ProbeTitle}";
+            ProgressText.Text = $"{row.Name} — {phase}: {p.Completed}/{p.Total} — {p.ProbeTitle}";
+        });
+    }
+
+    /// <summary>Сбой одной стратегии не должен обрывать весь прогон.</summary>
+    private async Task<StrategyTester.StrategyTestOutcome?> RunSafeAsync(
+        StrategyTester tester,
+        Strategy strategy,
+        IReadOnlyList<CheckTarget> targets,
+        StrategyTestRow row,
+        string phase,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await tester.RunAsync(strategy, targets, ProbeTimeoutSeconds, MakeProgress(row, phase), ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogService.Error($"«{row.Name}»: {ex.Message}");
+            row.Status = TestStatus.Failure;
+            row.Details = "ошибка: " + ex.Message;
+            return null;
+        }
+    }
+
+    private void MarkRest(string details)
+    {
+        for (int i = 1; i < _rows.Count; i++)
+        {
+            _rows[i].Status = TestStatus.Pending;
+            _rows[i].Details = details;
+        }
+    }
+
     private static void ApplyOutcome(StrategyTestRow row, StrategyTester.StrategyTestOutcome outcome)
     {
         row.Ping = outcome.AverageLatency == TimeSpan.Zero
@@ -228,38 +407,6 @@ public partial class TestingPage : UserControl
                 : outcome.Successes > 0
                     ? TestStatus.Partial
                     : TestStatus.Failure;
-    }
-
-    private void ShowBest(List<StrategyTester.StrategyTestOutcome> outcomes)
-    {
-        StrategyTester.StrategyTestOutcome? best = null;
-        foreach (var o in outcomes)
-        {
-            if (o.Error is not null || o.Strategy is null) continue;
-            if (best is null
-                || o.Successes > best.Successes
-                || (o.Successes == best.Successes && o.AverageLatency < best.AverageLatency))
-                best = o;
-        }
-
-        if (best?.Strategy is null)
-        {
-            BestStrategyText.Text = "Не удалось подобрать стратегию";
-            LogService.Warn("Ни одна стратегия не прошла тест.");
-            return;
-        }
-
-        LastBestStrategyName = best.Strategy.Name;
-        BestStrategyText.Text = "Лучшая: " + best.Strategy.Name;
-
-        // Лучшая стратегия сразу становится выбранной — на главной осталось нажать «Запустить».
-        SettingsService.Current.SelectedStrategyId = best.Strategy.Id;
-        SettingsService.Save();
-
-        LogService.Success(
-            $"Лучшая стратегия: {best.Strategy.Name} ({best.Successes}/{best.Total} проверок). Выбрана автоматически.");
-
-        UpdateRings(best);
     }
 
     private void ResetRings()
