@@ -4,8 +4,14 @@
 #   1. пуш тега вида v0.1.0;
 #   2. вручную: Actions -> Release -> Run workflow, ввести версию. Тег будет создан сам.
 #
-# Собирается self-contained single-file exe: программа для людей, которые вряд ли
-# будут ставить .NET Desktop Runtime руками. ReadyToRun включён ради быстрого старта.
+# В релиз кладём два артефакта:
+#   * lite  — framework-dependent, пара мегабайт, нужен .NET 8 Desktop Runtime;
+#   * full  — self-contained, ничего доставлять не надо.
+#
+# Почему full всё равно немаленький: вместе с программой едет весь WPF и CoreCLR.
+# Тримминг (PublishTrimmed) для WPF не поддерживается — XAML грузит типы через
+# рефлексию, и обрезанный билд падает в рантайме. Зато убран ReadyToRun (он давал
+# десятки лишних мегабайт прекомпиляции) и включено сжатие внутри single-file.
 name: Release
 
 on:
@@ -42,7 +48,19 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "number=$($version.TrimStart('v'))" >> $env:GITHUB_OUTPUT
 
-      - name: Сборка
+      - name: Сборка lite (требует .NET 8 Desktop Runtime)
+        shell: pwsh
+        run: |
+          dotnet publish src/ZapretWrapper/ZapretWrapper.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:DebugType=none `
+            -p:Version=${{ steps.version.outputs.number }} `
+            -o publish-lite
+
+      - name: Сборка full (self-contained)
         shell: pwsh
         run: |
           dotnet publish src/ZapretWrapper/ZapretWrapper.csproj `
@@ -51,14 +69,21 @@ jobs:
             --self-contained true `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:PublishReadyToRun=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishReadyToRun=false `
+            -p:DebugType=none `
             -p:Version=${{ steps.version.outputs.number }} `
-            -o publish
+            -o publish-full
 
       - name: Упаковать
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/* -DestinationPath "ZapretWrapper-${{ steps.version.outputs.version }}-win-x64.zip"
+          $tag = "${{ steps.version.outputs.version }}"
+          Compress-Archive -Path publish-lite/* -DestinationPath "ZapretWrapper-$tag-win-x64-lite.zip"
+          Compress-Archive -Path publish-full/* -DestinationPath "ZapretWrapper-$tag-win-x64.zip"
+          # Размеры видны в логе: удобно следить, чтобы билд не распухал между версиями.
+          Get-ChildItem *.zip, publish-lite/*.exe, publish-full/*.exe |
+            ForEach-Object { "{0,-52} {1,8:N1} МБ" -f $_.Name, ($_.Length / 1MB) }
 
       - name: Собрать описание релиза
         shell: pwsh
@@ -74,9 +99,14 @@ jobs:
             $body = @('Подробности см. в CHANGELOG.md.')
           }
           $body += ''
+          $body += '### Какой архив скачать'
+          $body += ''
+          $body += '* `...-win-x64-lite.zip` — лёгкий. Требует [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0/runtime) (x64).'
+          $body += '* `...-win-x64.zip` — со встроенным .NET. Больше весит, зато ничего доставлять не нужно.'
+          $body += ''
           $body += '### Установка'
           $body += ''
-          $body += 'Распакуйте zip и запустите `ZapretWrapper.exe`. .NET ставить не нужно.'
+          $body += 'Распакуйте zip и запустите `ZapretWrapper.exe`.'
           $body += 'При первом запуске укажите в настройках папку zapret. Программа запросит права администратора: без них WinDivert не ставит фильтр.'
           $body | Set-Content -Path release-notes.md -Encoding utf8
 
@@ -86,10 +116,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ steps.version.outputs.version }}"
-          $zip = "ZapretWrapper-$tag-win-x64.zip"
+          $assets = @("ZapretWrapper-$tag-win-x64-lite.zip", "ZapretWrapper-$tag-win-x64.zip")
           if (gh release view $tag 2>$null) {
-            gh release upload $tag $zip --clobber
+            gh release upload $tag @assets --clobber
             gh release edit $tag --notes-file release-notes.md
           } else {
-            gh release create $tag $zip --title "Zapret Wrapper $tag" --notes-file release-notes.md --target ${{ github.sha }}
+            gh release create $tag @assets --title "Zapret Wrapper $tag" --notes-file release-notes.md --target ${{ github.sha }}
           }
