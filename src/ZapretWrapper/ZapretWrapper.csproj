@@ -12,4 +12,24 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <!-- Метаданные сборки: видны в свойствах exe и в отчётах об ошибках. -->
+  <PropertyGroup>
+    <Product>Zapret Wrapper</Product>
+    <AssemblyTitle>Zapret Wrapper</AssemblyTitle>
+    <Description>Графическая оболочка для zapret: запуск стратегий и автоматический подбор рабочей.</Description>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+  </PropertyGroup>
+
+  <!--
+    Иконка exe. WPF умеет сюда только .ico, поэтому SVG не годится.
+    Condition="Exists(...)" нужно, чтобы сборка не падала у тех, у кого файла нет.
+    Приоритет: logo.ico рядом с проектом, иначе assets/logo.ico в корне репозитория.
+  -->
+  <PropertyGroup>
+    <ApplicationIcon Condition="Exists('logo.ico')">logo.ico</ApplicationIcon>
+    <ApplicationIcon Condition="'$(ApplicationIcon)' == '' And Exists('$(MSBuildThisFileDirectory)..\..\assets\logo.ico')">$(MSBuildThisFileDirectory)..\..\assets\logo.ico</ApplicationIcon>
+  </PropertyGroup>
+
 </Project>
