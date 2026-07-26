@@ -11,20 +11,32 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0"
                        Text="Журнал событий"
+                       VerticalAlignment="Center"
                        Style="{StaticResource TextCardTitleStyle}" />
-            <Button Grid.Column="1"
-                    Style="{StaticResource SubtleButtonStyle}"
-                    Content="Обновить"
-                    Click="Refresh_Click" />
-            <Button Grid.Column="3"
-                    Style="{StaticResource SubtleButtonStyle}"
-                    Content="Очистить"
-                    Click="Clear_Click" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Style="{StaticResource SubtleButtonStyle}"
+                        Content="Копировать выбранное"
+                        Margin="0,0,8,0"
+                        Click="CopySelected_Click" />
+                <Button Style="{StaticResource SubtleButtonStyle}"
+                        Content="Копировать всё"
+                        Margin="0,0,8,0"
+                        Click="CopyAll_Click" />
+                <Button Style="{StaticResource SubtleButtonStyle}"
+                        Content="Файл журнала"
+                        Margin="0,0,8,0"
+                        Click="OpenFile_Click" />
+                <Button Style="{StaticResource SubtleButtonStyle}"
+                        Content="Обновить"
+                        Margin="0,0,8,0"
+                        Click="Refresh_Click" />
+                <Button Style="{StaticResource SubtleButtonStyle}"
+                        Content="Очистить"
+                        Click="Clear_Click" />
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="1"
@@ -37,7 +49,10 @@
                      Background="Transparent"
                      BorderThickness="0"
                      FontFamily="Consolas"
-                     FontSize="12">
+                     FontSize="12"
+                     SelectionMode="Extended"
+                     PreviewKeyDown="LogView_PreviewKeyDown"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Padding" Value="0,2" />
@@ -46,7 +61,16 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Text="{Binding Text}" FontFamily="Consolas" />
+                        <!-- TextBox вместо TextBlock: так строку можно выделить и скопировать. -->
+                        <TextBox Text="{Binding Text, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 IsReadOnlyCaretVisible="False"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Padding="0"
+                                 FontFamily="Consolas"
+                                 FontSize="12"
+                                 TextWrapping="Wrap" />
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
