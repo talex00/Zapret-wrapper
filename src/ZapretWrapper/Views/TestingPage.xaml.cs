@@ -20,7 +20,8 @@ namespace ZapretWrapper.Views;
 ///    Методы для протоколов, которые и так работают, не перебираются вообще.
 /// 1. Быстрый прогон: каждый кандидат проверяется двумя пробами, которые упали на базе.
 /// 2. Полная проверка выживших — только по своему протоколу.
-/// 3. Победители каждого протокола склеиваются в один профиль через --new и проверяются целиком.
+/// 3. Итог: для zapret2 победители по протоколам склеиваются в один профиль через --new,
+///    для zapret-discord-youtube выбирается лучший готовый general*.bat.
 /// </summary>
 public partial class TestingPage : UserControl
 {
@@ -98,6 +99,31 @@ public partial class TestingPage : UserControl
         TestToggleButton.IsEnabled = true;
     }
 
+    /// <summary>
+    /// Стратегии flowseal фильтруют трафик по хостлистам. Если проверяемого домена
+    /// там нет, обход к нему не применяется и весь тест превращается в бессмыслицу.
+    /// </summary>
+    private static void PrepareHostlists(IReadOnlyList<CheckTarget> targets)
+    {
+        if (StrategyCatalog.Flavor != ZapretFlavor.Flowseal) return;
+
+        var hosts = targets
+            .SelectMany(t => t.Probes)
+            .Select(p => p.Host)
+            .Where(h => !string.IsNullOrWhiteSpace(h))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var ensured = HostlistService.EnsureCovered(SettingsService.Current.ZapretPath, hosts);
+
+        if (ensured.Error is not null)
+            LogService.Warn("Хостлисты не подготовлены: " + ensured.Error);
+
+        if (ensured.Excluded.Count > 0)
+            LogService.Warn("В списках исключений есть проверяемые домены (обход к ним не применяется): "
+                            + string.Join(", ", ensured.Excluded));
+    }
+
     private async void TestToggle_Click(object sender, RoutedEventArgs e)
     {
         // Кнопка двухрежимная: второе нажатие отменяет прогон.
@@ -123,7 +149,7 @@ public partial class TestingPage : UserControl
         if (runner.IsRunning)
         {
             var answer = MessageBox.Show(
-                "Сейчас запущен обход. Тест сам управляет winws2, поэтому обход будет остановлен. Продолжить?",
+                "Сейчас запущен обход. Тест сам управляет winws, поэтому обход будет остановлен. Продолжить?",
                 "ZapretWrapper", MessageBoxButton.OKCancel, MessageBoxImage.Question);
             if (answer != MessageBoxResult.OK) return;
             runner.Stop();
@@ -148,6 +174,8 @@ public partial class TestingPage : UserControl
 
         try
         {
+            PrepareHostlists(targets);
+
             // ---- Фаза 0: база без обхода ----
             var baseRow = _rows[0];
             baseRow.Status = TestStatus.Running;
@@ -275,7 +303,7 @@ public partial class TestingPage : UserControl
         }
     }
 
-    /// <summary>Склеивает победителей в один профиль и проверяет его на всех целях.</summary>
+    /// <summary>Выбирает итоговую стратегию и проверяет её на всех целях.</summary>
     private async Task FinishAsync(
         StrategyTester tester,
         Dictionary<StrategyProtocol, StrategyTester.StrategyTestOutcome> best,
@@ -285,8 +313,20 @@ public partial class TestingPage : UserControl
     {
         Strategy? final = null;
 
+        if (!StrategyCatalog.SupportsCombining)
+        {
+            // zapret-discord-youtube: каждый general*.bat — самодостаточный набор профилей
+            // со своими --wf-tcp/--wf-udp. Склейка двух таких дала бы мусор, поэтому
+            // берём лучший целиком — по числу пройденных проверок, затем по задержке.
+            final = best.Values
+                .Where(o => o.Strategy is not null)
+                .OrderByDescending(o => o.Successes)
+                .ThenBy(o => o.AverageLatency)
+                .Select(o => o.Strategy)
+                .FirstOrDefault();
+        }
         // Стратегия из config проверялась сразу на всё: если она вытянула — склеивать нечего.
-        if (best.TryGetValue(StrategyProtocol.Mixed, out var mixed) && mixed.Strategy is not null)
+        else if (best.TryGetValue(StrategyProtocol.Mixed, out var mixed) && mixed.Strategy is not null)
         {
             final = mixed.Strategy;
         }
@@ -302,7 +342,15 @@ public partial class TestingPage : UserControl
                     LogService.Warn($"Для {StrategyPlan.Label(protocol)} рабочего метода не нашлось.");
             }
 
-            if (parts.Count > 0) final = StrategyProfileBuilder.Build(parts);
+            // Дублировать одну и ту же стратегию в склейке нельзя: получились бы два
+            // одинаковых фильтра через --new, и второй никогда бы не сработал.
+            parts = parts
+                .GroupBy(p => p.Id)
+                .Select(g => g.First())
+                .ToList();
+
+            if (parts.Count == 1) final = parts[0];
+            else if (parts.Count > 1) final = StrategyProfileBuilder.Build(parts);
         }
 
         if (final is null)
