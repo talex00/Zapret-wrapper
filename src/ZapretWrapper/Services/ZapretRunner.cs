@@ -127,6 +127,11 @@ public class ZapretRunner : IDisposable
             var args = ZapretBackend.ResolveArgs(strategy.Args, path!);
             _exeName = Path.GetFileNameWithoutExtension(backend.WinwsExe);
 
+            // В оригинальной сборке пользовательские списки создаёт service.bat перед
+            // запуском. Мы bat не выполняем, а в аргументах они есть всегда: без файла
+            // ipset-exclude-user.txt winws не ругается, а сразу завершает работу.
+            HostlistService.EnsureUserFiles(path);
+
             try
             {
                 var psi = new ProcessStartInfo
