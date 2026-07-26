@@ -13,6 +13,9 @@ namespace ZapretWrapper.Models;
 ///    (так устроен чистый zapret2: готовый конфиг один, а подбирать нужно из многих);
 /// 3) только матрица методов из blockcheck2.d — если нет ни пресетов, ни конфига.
 ///
+/// Поверх этого живёт подобранный профиль — результат теста, собранный из победителей
+/// по отдельным протоколам. Он всегда первый в списке и переживает Reload.
+///
 /// Своих выдуманных пресетов больше нет: жёсткий список с путями вроде
 /// files/list-youtube.txt и init.d/windivert.filter/* расходится с реальной сборкой,
 /// и winws2 завершается сразу после запуска.
@@ -21,6 +24,7 @@ public static class StrategyCatalog
 {
     private static List<Strategy> _all = new();
     private static string? _loadedFrom;
+    private static Strategy? _combined;
 
     /// <summary>Кандидаты из матрицы blockcheck2.d — работают на любой сборке zapret2.</summary>
     public static IReadOnlyList<Strategy> BuiltIn => StrategyMatrix.All;
@@ -34,8 +38,15 @@ public static class StrategyCatalog
         }
     }
 
-    /// <summary>Что гонять на тесте. Совпадает с All: список уже включает кандидатов.</summary>
-    public static IReadOnlyList<Strategy> TestCandidates => All;
+    /// <summary>Последний собранный профиль — если тест уже прогоняли.</summary>
+    public static Strategy? Combined => _combined;
+
+    /// <summary>
+    /// Что гонять на тесте: всё, кроме ранее собранного профиля — он собирается заново
+    /// в конце каждого прогона, и тестировать старый бессмысленно.
+    /// </summary>
+    public static IReadOnlyList<Strategy> TestCandidates =>
+        All.Where(s => !StrategyProfileBuilder.IsCombined(s.Id)).ToList();
 
     /// <summary>Откуда взят текущий список — показываем в UI, чтобы не было сюрпризов.</summary>
     public static string SourceDescription { get; private set; } = "не загружено";
@@ -65,7 +76,7 @@ public static class StrategyCatalog
                 SourceDescription += $" (пропущено без вызова winws2: {fromFiles.Skipped.Count})";
 
             LogService.Info("Стратегии загружены из .cmd-пресетов: " + fromFiles.Strategies.Count);
-            Changed?.Invoke(null, EventArgs.Empty);
+            Finish();
             return;
         }
 
@@ -82,7 +93,7 @@ public static class StrategyCatalog
                                 $" (NFQWS2_OPT) + матрица методов blockcheck2 ({StrategyMatrix.All.Count})";
 
             LogService.Info("Стратегия загружена из " + fromConfig.SourceFile);
-            Changed?.Invoke(null, EventArgs.Empty);
+            Finish();
             return;
         }
 
@@ -93,7 +104,30 @@ public static class StrategyCatalog
         if (fromConfig.Error is not null)
             SourceDescription += $": {fromConfig.Error}";
 
+        Finish();
+    }
+
+    /// <summary>Запоминает собранный профиль и ставит его в начало списка.</summary>
+    public static void SetCombined(Strategy strategy)
+    {
+        _combined = strategy;
+        if (_all.Count == 0) Reload();
+        InsertCombined();
         Changed?.Invoke(null, EventArgs.Empty);
+    }
+
+    private static void Finish()
+    {
+        InsertCombined();
+        Changed?.Invoke(null, EventArgs.Empty);
+    }
+
+    private static void InsertCombined()
+    {
+        if (_combined is null) return;
+
+        _all.RemoveAll(s => StrategyProfileBuilder.IsCombined(s.Id));
+        _all.Insert(0, _combined);
     }
 
     public static Strategy? FindById(string? id)
