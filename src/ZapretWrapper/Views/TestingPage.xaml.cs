@@ -238,7 +238,8 @@ public partial class TestingPage : UserControl
             if (ct.IsCancellationRequested)
             {
                 ProgressText.Text = "Тестирование остановлено. Уже проверенные стратегии остались в таблице.";
-                LogService.Info("Тестирование прервано пользователем.";
+                LogService.Info("Тестирование прервано пользователем.");
+                return;
             }
 
             // ---- Фаза 3: итоговый профиль ----
@@ -312,8 +313,7 @@ public partial class TestingPage : UserControl
             return;
         }
 
-        var isCombined = StrategyProfileBuilder.IsCombined(final.Id);
-        if (isCombined) StrategyCatalog.SetCombined(final);
+        if (StrategyProfileBuilder.IsCombined(final.Id)) StrategyCatalog.SetCombined(final);
 
         // Итоговая проверка целиком: склейка могла повести себя иначе, чем каждая часть отдельно.
         StrategyTestRow row;
