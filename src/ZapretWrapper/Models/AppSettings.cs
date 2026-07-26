@@ -5,7 +5,7 @@ namespace ZapretWrapper.Models;
 /// </summary>
 public class AppSettings
 {
-    /// <summary>Путь к папке zapret2 (где лежат winws2.exe, lua/, files/fake/).</summary>
+    /// <summary>Путь к папке zapret (flowseal-сборка или zapret2 — флейвор определяется автоматически).</summary>
     public string? ZapretPath { get; set; }
 
     /// <summary>Выбранная стратегия (id из списка).</summary>
@@ -14,9 +14,12 @@ public class AppSettings
     /// <summary>Тема: "System" | "Light" | "Dark".</summary>
     public string Theme { get; set; } = "System";
 
-    /// <summary>Домены для тестирования (через запятую). Если пусто — дефолтный список.</summary>
+    /// <summary>
+    /// Домены для тестирования (через запятую). Если пусто — берётся дефолтный набор
+    /// (YouTube + Discord). Именно они и есть практический смысл flowseal-сборки.
+    /// </summary>
     public string TestDomains { get; set; } = "";
 
-    /// <summary>Сколько мс ждать после запуска winws2, прежде чем начинать пробы (WinDivert должен успеть поставить фильтр).</summary>
+    /// <summary>Сколько мс ждать после запуска winws, прежде чем начинать пробы (WinDivert должен успеть поставить фильтр).</summary>
     public int StartupDelayMs { get; set; } = 1500;
 }

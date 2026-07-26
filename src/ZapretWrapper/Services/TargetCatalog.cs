@@ -68,13 +68,27 @@ public static class TargetCatalog
         },
     };
 
+    /// <summary>
+    /// Цели по умолчанию: только YouTube и Discord. Остальное из <see cref="All"/> доступно,
+    /// если вписать домен в настройках. Причина ограничения простая: каждая цель
+    /// умножается на число стратегий в полном прогоне и сильно удлиняет тест.
+    /// </summary>
+    public static IReadOnlyList<CheckTarget> Default { get; } = new List<CheckTarget>
+    {
+        All.First(t => t.Id == "youtube"),
+        All.First(t => t.Id == "discord"),
+    };
+
+    /// <summary>Строка для подсказки в настройках и для инициализации поля доменов.</summary>
+    public static string DefaultCsv => string.Join(", ", Default.Select(t => t.Id + ".com"));
+
     public static CheckTarget? FindById(string? id) =>
         string.IsNullOrEmpty(id) ? null : All.FirstOrDefault(t => t.Id == id);
 
     /// <summary>Превращает список доменов из настроек в набор целей с осмысленными пробами.</summary>
     public static IReadOnlyList<CheckTarget> Resolve(string? csv)
     {
-        if (string.IsNullOrWhiteSpace(csv)) return All;
+        if (string.IsNullOrWhiteSpace(csv)) return Default;
 
         var list = new List<CheckTarget>();
         foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -90,7 +104,7 @@ public static class TargetCatalog
             if (list.All(t => t.Id != target.Id)) list.Add(target);
         }
 
-        return list.Count > 0 ? list : All;
+        return list.Count > 0 ? list : Default;
     }
 
     private static CheckTarget Generic(string host) => new()
