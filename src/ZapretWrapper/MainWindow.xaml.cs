@@ -81,8 +81,18 @@ public partial class MainWindow : Window
         PageHost.Content = target;
     }
 
+    /// <summary>
+    /// Может вызываться из событий раннера, поэтому сначала гарантируем UI-поток:
+    /// обращение к элементам окна из пула потоков валило приложение.
+    /// </summary>
     public void RefreshStatus()
     {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(new System.Action(RefreshStatus));
+            return;
+        }
+
         var runner = App.Runner;
         if (runner is null) return;
 

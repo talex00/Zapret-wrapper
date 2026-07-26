@@ -189,9 +189,25 @@ public partial class HomePage : UserControl
                     row.Details = $"{p.Completed}/{p.Total} — {p.ProbeTitle}";
                 });
 
-                var outcome = idx == 0
-                    ? await tester.RunBaselineAsync(targets, 6, progress, ct)
-                    : await tester.RunAsync(strategies[idx - 1], targets, 6, progress, ct);
+                StrategyTester.StrategyTestOutcome outcome;
+                try
+                {
+                    outcome = idx == 0
+                        ? await tester.RunBaselineAsync(targets, 6, progress, ct)
+                        : await tester.RunAsync(strategies[idx - 1], targets, 6, progress, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // Сбой одной стратегии не должен обрывать весь прогон.
+                    AppendLog("ERROR", $"«{row.Name}»: {ex.Message}");
+                    row.Status = TestStatus.Failure;
+                    row.Details = "ошибка: " + ex.Message;
+                    continue;
+                }
 
                 if (ct.IsCancellationRequested) break;
 
@@ -211,6 +227,9 @@ public partial class HomePage : UserControl
         }
         finally
         {
+            // На всякий случай: тест сам управляет процессом и не должен оставлять его висеть.
+            try { runner.Stop(); } catch { /* ignore */ }
+
             TestButton.IsEnabled = true;
             StartButton.IsEnabled = true;
             StopButton.IsEnabled = true;

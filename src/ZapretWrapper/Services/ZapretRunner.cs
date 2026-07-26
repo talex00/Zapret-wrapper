@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using ZapretWrapper.Models;
 
 namespace ZapretWrapper.Services;
@@ -20,7 +21,22 @@ public class ZapretRunner : IDisposable
 
     public bool IsRunning
     {
-        get { lock (_lock) return _process is { HasExited: false }; }
+        get
+        {
+            lock (_lock)
+            {
+                if (_process is null) return false;
+                try
+                {
+                    return !_process.HasExited;
+                }
+                catch
+                {
+                    // Процесс уже освобождён — считаем, что не работает.
+                    return false;
+                }
+            }
+        }
     }
 
     public string? LastError { get; private set; }
@@ -51,6 +67,27 @@ public class ZapretRunner : IDisposable
 
     /// <summary>Процесс завершился сам, без вызова Stop().</summary>
     public event EventHandler? ProcessExited;
+
+    /// <summary>
+    /// События раннера подписывает UI (MainWindow обновляет индикатор состояния), а
+    /// Process.Exited приходит из пула потоков. Без этого перехода в поток диспетчера
+    /// обработчик падал с InvalidOperationException и ронял всё приложение.
+    /// </summary>
+    private static void OnUi(Action action)
+    {
+        var app = Application.Current;
+        if (app is null)
+        {
+            action();
+            return;
+        }
+
+        if (app.Dispatcher.CheckAccess()) action();
+        else app.Dispatcher.BeginInvoke(action);
+    }
+
+    private void RaiseStateChanged() =>
+        OnUi(() => StateChanged?.Invoke(this, EventArgs.Empty));
 
     /// <summary>Запустить winws2.exe с аргументами стратегии.</summary>
     public bool Start(Strategy strategy)
@@ -110,6 +147,8 @@ public class ZapretRunner : IDisposable
                 };
                 process.Exited += OnProcessExited;
 
+                _stopping = false;
+
                 if (!process.Start())
                 {
                     LastError = "Не удалось запустить winws2.exe";
@@ -135,7 +174,7 @@ public class ZapretRunner : IDisposable
             }
         }
 
-        StateChanged?.Invoke(this, EventArgs.Empty);
+        RaiseStateChanged();
         return true;
     }
 
@@ -146,8 +185,13 @@ public class ZapretRunner : IDisposable
 
         CurrentStrategy = null;
         LogService.Warn("winws2 завершил работу неожиданно.");
-        ProcessExited?.Invoke(this, EventArgs.Empty);
-        StateChanged?.Invoke(this, EventArgs.Empty);
+
+        // Вызов приходит из пула потоков — подписчиков дёргаем только в UI-потоке.
+        OnUi(() =>
+        {
+            ProcessExited?.Invoke(this, EventArgs.Empty);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        });
     }
 
     /// <summary>Остановить запущенный winws2.exe.</summary>
@@ -163,18 +207,15 @@ public class ZapretRunner : IDisposable
                 return true;
             }
 
-            if (_process.HasExited)
+            _stopping = true;
+            try
             {
-                _process.Dispose();
-                _process = null;
-                CurrentStrategy = null;
-                LastError = null;
-                changed = true;
-            }
-            else
-            {
-                _stopping = true;
-                try
+                // Обработчик снимаем до Kill(): событие Exited приходит асинхронно и
+                // успевало прилететь уже после сброса _stopping — штатная остановка
+                // выглядела как падение winws2 и рвала тест на первой же стратегии.
+                _process.Exited -= OnProcessExited;
+
+                if (!_process.HasExited)
                 {
                     _process.Kill(entireProcessTree: true);
                     if (!_process.WaitForExit(5000))
@@ -184,27 +225,28 @@ public class ZapretRunner : IDisposable
                         return false;
                     }
 
-                    _process.Dispose();
-                    _process = null;
-                    CurrentStrategy = null;
-                    LastError = null;
-                    changed = true;
                     LogService.Info("winws2 остановлен.");
                 }
-                catch (Exception ex)
-                {
-                    LastError = ex.Message;
-                    LogService.Error($"Ошибка остановки winws2: {ex.Message}");
-                    return false;
-                }
-                finally
-                {
-                    _stopping = false;
-                }
+
+                _process.Dispose();
+                _process = null;
+                CurrentStrategy = null;
+                LastError = null;
+                changed = true;
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.Message;
+                LogService.Error($"Ошибка остановки winws2: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _stopping = false;
             }
         }
 
-        if (changed) StateChanged?.Invoke(this, EventArgs.Empty);
+        if (changed) RaiseStateChanged();
         return true;
     }
 

@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using System.Windows;
 using ZapretWrapper.Services;
 using ZapretWrapper.Styles;
@@ -15,6 +16,8 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        InstallCrashHandlers();
 
         // Приложение должно быть админом целиком. Тогда winws2.exe наследует токен и стартует
         // без UAC — раньше подтверждение прав всплывало на КАЖДУЮ тестируемую стратегию.
@@ -48,6 +51,54 @@ public partial class App : Application
         main.Show();
 
         main.RefreshStatus();
+    }
+
+    /// <summary>
+    /// Приложение молча вылетало: исключение в фоновом потоке убивает процесс без следов.
+    /// Теперь любая необработанная ошибка попадает в журнал и показывается пользователю.
+    /// </summary>
+    private void InstallCrashHandlers()
+    {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Report(args.Exception);
+            args.Handled = true;  // UI-поток не роняем
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Report(args.ExceptionObject as Exception);
+
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Report(args.Exception);
+            args.SetObserved();
+        };
+    }
+
+    private static void Report(Exception? ex)
+    {
+        if (ex is null) return;
+
+        try
+        {
+            LogService.Error("Необработанная ошибка: " + ex);
+        }
+        catch { /* логгер не должен мешать */ }
+
+        try
+        {
+            var text = "Произошла ошибка:\n\n" + ex.Message +
+                       "\n\nПодробности в журнале:\n" + LogService.LogPath;
+
+            void Show() => MessageBox.Show(text, "ZapretWrapper",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+
+            var app = Current;
+            if (app is null) return;
+            if (app.Dispatcher.CheckAccess()) Show();
+            else app.Dispatcher.BeginInvoke(new Action(Show));
+        }
+        catch { /* ignore */ }
     }
 
     /// <summary>Перезапускает себя с повышением прав: один UAC-запрос на всё приложение.</summary>
