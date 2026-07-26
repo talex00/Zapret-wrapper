@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,7 +10,11 @@ using ZapretWrapper.Models;
 namespace ZapretWrapper.Services;
 
 /// <summary>
-/// Запускает и останавливает winws2.exe. Поддерживает только один инстанс сразу.
+/// Запускает и останавливает winws. Поддерживает только один инстанс сразу.
+/// Какой именно бинарник и с какой рабочей папкой — решает ZapretBackend:
+/// у zapret2 это binaries/windows-x86_64/winws2.exe, у zapret-discord-youtube — bin/winws.exe,
+/// причём второй обязательно стартует из своей папки из-за cygwin1.dll.
+///
 /// Само приложение поднимается с правами администратора (app.manifest), поэтому
 /// процесс стартует без UAC-диалога, его вывод можно читать, а его самого — убить.
 /// </summary>
@@ -18,6 +23,7 @@ public class ZapretRunner : IDisposable
     private Process? _process;
     private readonly object _lock = new();
     private volatile bool _stopping;
+    private string _exeName = "winws";
 
     public bool IsRunning
     {
@@ -44,7 +50,7 @@ public class ZapretRunner : IDisposable
     /// <summary>Стратегия, с которой запущен текущий процесс.</summary>
     public Strategy? CurrentStrategy { get; private set; }
 
-    public bool IsValid => ZapretLocator.Validate(SettingsService.Current.ZapretPath).IsValid;
+    public bool IsValid => ZapretBackend.Validate(SettingsService.Current.ZapretPath).IsValid;
 
     public static bool IsElevated
     {
@@ -89,19 +95,19 @@ public class ZapretRunner : IDisposable
     private void RaiseStateChanged() =>
         OnUi(() => StateChanged?.Invoke(this, EventArgs.Empty));
 
-    /// <summary>Запустить winws2.exe с аргументами стратегии.</summary>
+    /// <summary>Запустить winws с аргументами стратегии.</summary>
     public bool Start(Strategy strategy)
     {
         lock (_lock)
         {
             if (_process is { HasExited: false })
             {
-                LastError = "winws2 уже запущен";
+                LastError = _exeName + " уже запущен";
                 return false;
             }
 
             var path = SettingsService.Current.ZapretPath;
-            var layout = ZapretLocator.Validate(path);
+            var layout = ZapretBackend.Validate(path);
             if (!layout.IsValid)
             {
                 LastError = layout.Error
@@ -117,16 +123,18 @@ public class ZapretRunner : IDisposable
                 return false;
             }
 
-            var paths = ZapretLocator.ResolvePaths(path!);
-            var args = ZapretLocator.ResolveArgs(strategy.Args.ToArray(), path!);
+            var backend = ZapretBackend.Resolve(path!, layout.Flavor);
+            var args = ZapretBackend.ResolveArgs(strategy.Args, path!);
+            _exeName = Path.GetFileNameWithoutExtension(backend.WinwsExe);
 
             try
             {
                 var psi = new ProcessStartInfo
                 {
-                    FileName = paths.WinwsExe,
-                    WorkingDirectory = path,
-                    // UseShellExecute=false обязателен для перехвата вывода winws2.
+                    FileName = backend.WinwsExe,
+                    // Для flowseal это bin/: winws.exe грузит cygwin1.dll из своей папки.
+                    WorkingDirectory = backend.WorkingDirectory,
+                    // UseShellExecute=false обязателен для перехвата вывода.
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -134,16 +142,17 @@ public class ZapretRunner : IDisposable
                 };
                 foreach (var a in args) psi.ArgumentList.Add(a);
 
-                LogService.Debug($"{paths.WinwsExe} {string.Join(" ", args)}");
+                LogService.Debug($"{backend.WinwsExe} {string.Join(" ", args)}");
 
+                var prefix = _exeName + ": ";
                 var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
                 process.OutputDataReceived += (_, e) =>
                 {
-                    if (!string.IsNullOrWhiteSpace(e.Data)) LogService.Debug("winws2: " + e.Data);
+                    if (!string.IsNullOrWhiteSpace(e.Data)) LogService.Debug(prefix + e.Data);
                 };
                 process.ErrorDataReceived += (_, e) =>
                 {
-                    if (!string.IsNullOrWhiteSpace(e.Data)) LogService.Warn("winws2: " + e.Data);
+                    if (!string.IsNullOrWhiteSpace(e.Data)) LogService.Warn(prefix + e.Data);
                 };
                 process.Exited += OnProcessExited;
 
@@ -151,7 +160,7 @@ public class ZapretRunner : IDisposable
 
                 if (!process.Start())
                 {
-                    LastError = "Не удалось запустить winws2.exe";
+                    LastError = "Не удалось запустить " + Path.GetFileName(backend.WinwsExe);
                     process.Dispose();
                     LogService.Error(LastError);
                     return false;
@@ -164,12 +173,12 @@ public class ZapretRunner : IDisposable
                 CurrentStrategy = strategy;
                 LastError = null;
                 LogService.Success(
-                    $"winws2 запущен (PID {process.Id}), стратегия «{strategy.Name}».");
+                    $"{_exeName} запущен (PID {process.Id}), стратегия «{strategy.Name}».");
             }
             catch (Exception ex)
             {
                 LastError = ex.Message;
-                LogService.Error($"Ошибка запуска winws2: {ex.Message}");
+                LogService.Error($"Ошибка запуска {_exeName}: {ex.Message}");
                 return false;
             }
         }
@@ -184,7 +193,7 @@ public class ZapretRunner : IDisposable
         if (_stopping) return;
 
         CurrentStrategy = null;
-        LogService.Warn("winws2 завершил работу неожиданно.");
+        LogService.Warn($"{_exeName} завершил работу неожиданно.");
 
         // Вызов приходит из пула потоков — подписчиков дёргаем только в UI-потоке.
         OnUi(() =>
@@ -194,7 +203,7 @@ public class ZapretRunner : IDisposable
         });
     }
 
-    /// <summary>Остановить запущенный winws2.exe.</summary>
+    /// <summary>Остановить запущенный процесс.</summary>
     public bool Stop()
     {
         bool changed = false;
@@ -212,7 +221,7 @@ public class ZapretRunner : IDisposable
             {
                 // Обработчик снимаем до Kill(): событие Exited приходит асинхронно и
                 // успевало прилететь уже после сброса _stopping — штатная остановка
-                // выглядела как падение winws2 и рвала тест на первой же стратегии.
+                // выглядела как падение и рвала тест на первой же стратегии.
                 _process.Exited -= OnProcessExited;
 
                 if (!_process.HasExited)
@@ -220,12 +229,12 @@ public class ZapretRunner : IDisposable
                     _process.Kill(entireProcessTree: true);
                     if (!_process.WaitForExit(5000))
                     {
-                        LastError = "winws2 не завершился за 5 секунд.";
+                        LastError = $"{_exeName} не завершился за 5 секунд.";
                         LogService.Warn(LastError);
                         return false;
                     }
 
-                    LogService.Info("winws2 остановлен.");
+                    LogService.Info($"{_exeName} остановлен.");
                 }
 
                 _process.Dispose();
@@ -237,7 +246,7 @@ public class ZapretRunner : IDisposable
             catch (Exception ex)
             {
                 LastError = ex.Message;
-                LogService.Error($"Ошибка остановки winws2: {ex.Message}");
+                LogService.Error($"Ошибка остановки {_exeName}: {ex.Message}");
                 return false;
             }
             finally
