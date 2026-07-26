@@ -19,6 +19,18 @@ public static class HostlistService
 {
     private const string UserListName = "list-general-user.txt";
 
+    /// <summary>
+    /// Файлы, которые в оригинальной сборке создаёт service.bat (load_user_lists)
+    /// перед запуском winws. Аргументы в general*.bat ссылаются на них всегда,
+    /// а winws при отсутствии файла ipset не предупреждает, а сразу выходит.
+    /// </summary>
+    private static readonly string[] UserFiles =
+    {
+        "list-general-user.txt",
+        "list-exclude-user.txt",
+        "ipset-exclude-user.txt",
+    };
+
     public sealed class EnsureResult
     {
         /// <summary>Домены, которые мы только что дописали в пользовательский список.</summary>
@@ -36,6 +48,39 @@ public static class HostlistService
     public static string ListsDir(string root) => Path.Combine(root, "lists");
 
     public static string UserListPath(string root) => Path.Combine(ListsDir(root), UserListName);
+
+    /// <summary>
+    /// Создаёт отсутствующие пользовательские списки (пустыми). Вызывается перед
+    /// каждым запуском winws: файлы мог удалить пользователь или их не было
+    /// вовсе, если сборку ещё ни разу не запускали через service.bat.
+    /// Для zapret2 ничего не делает.
+    /// </summary>
+    public static void EnsureUserFiles(string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root)) return;
+        if (ZapretBackend.Detect(root) != ZapretFlavor.Flowseal) return;
+
+        var listsDir = ListsDir(root!);
+        if (!Directory.Exists(listsDir)) return;
+
+        foreach (var name in UserFiles)
+        {
+            var path = Path.Combine(listsDir, name);
+            if (File.Exists(path)) continue;
+
+            try
+            {
+                // Именно пустой файл: в ipset-списках комментарии не гарантированно
+                // разбираются, а пустой список winws принимает нормально.
+                File.WriteAllText(path, string.Empty);
+                LogService.Info($"Создан пустой пользовательский список {name}.");
+            }
+            catch (Exception ex)
+            {
+                LogService.Warn($"Не удалось создать {name}: {ex.Message}");
+            }
+        }
+    }
 
     /// <summary>
     /// Дописывает в list-general-user.txt те из хостов, которые не покрыты
@@ -59,6 +104,8 @@ public static class HostlistService
             result.Error = "Не найдена папка lists/.";
             return result;
         }
+
+        EnsureUserFiles(root);
 
         try
         {
@@ -85,15 +132,14 @@ public static class HostlistService
             if (missing.Count == 0) return result;
 
             var text = new List<string>();
-            if (!File.Exists(file))
+            var existing = File.Exists(file) ? File.ReadAllText(file) : string.Empty;
+            if (existing.Trim().Length == 0)
             {
                 text.Add("# Домены, добавленные Zapret Wrapper для тестирования стратегий.");
             }
-            else
+            else if (!existing.EndsWith("\n", StringComparison.Ordinal))
             {
-                var existing = File.ReadAllText(file);
-                if (existing.Length > 0 && !existing.EndsWith("\n", StringComparison.Ordinal))
-                    text.Add(string.Empty);
+                text.Add(string.Empty);
             }
 
             text.AddRange(missing);
