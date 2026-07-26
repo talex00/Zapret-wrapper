@@ -1,21 +1,28 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using ZapretWrapper.Services;
 
 namespace ZapretWrapper.Models;
 
 /// <summary>
-/// Список стратегий. Основной источник — пресеты из папки zapret пользователя
-/// (их читает StrategyLoader). Встроенные пресеты остались только как запасной вариант:
-/// жёсткий список в коде неизбежно расходится с тем, что лежит в релизе zapret.
+/// Списки стратегий. Источники по приоритету:
+/// 1) .cmd/.bat пресеты из папки (так устроен zapret-win-bundle);
+/// 2) переменная NFQWS2_OPT из config / config.default (так устроен чистый zapret2);
+/// 3) матрица методов из blockcheck2.d — если в папке нет ни того, ни другого.
+///
+/// Своих выдуманных пресетов больше нет: жёсткий список с путями вроде
+/// files/list-youtube.txt и init.d/windivert.filter/* расходится с реальной сборкой,
+/// и winws2 завершается сразу после запуска.
 /// </summary>
 public static class StrategyCatalog
 {
     private static List<Strategy> _all = new();
     private static string? _loadedFrom;
 
-    public static IReadOnlyList<Strategy> BuiltIn { get; } = BuildBuiltIn();
+    /// <summary>Кандидаты из матрицы blockcheck2.d — работают на любой сборке zapret2.</summary>
+    public static IReadOnlyList<Strategy> BuiltIn => StrategyMatrix.All;
 
     public static IReadOnlyList<Strategy> All
     {
@@ -26,6 +33,24 @@ public static class StrategyCatalog
         }
     }
 
+    /// <summary>
+    /// Что гонять на тесте: сначала готовые стратегии из папки, потом матрица методов.
+    /// Подбор имеет смысл только если перебирать разные методы, а не один готовый конфиг.
+    /// </summary>
+    public static IReadOnlyList<Strategy> TestCandidates
+    {
+        get
+        {
+            var result = new List<Strategy>(All);
+            var known = new HashSet<string>(result.Select(s => s.Id), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var s in StrategyMatrix.All)
+                if (known.Add(s.Id)) result.Add(s);
+
+            return result;
+        }
+    }
+
     /// <summary>Откуда взят текущий список — показываем в UI, чтобы не было сюрпризов.</summary>
     public static string SourceDescription { get; private set; } = "не загружено";
 
@@ -33,7 +58,7 @@ public static class StrategyCatalog
 
     public static event EventHandler? Changed;
 
-    /// <summary>Перечитывает пресеты из папки zapret. Дешёво: вызывается при переходе между страницами.</summary>
+    /// <summary>Перечитывает стратегии из папки zapret. Дешёво: вызывается при переходе между страницами.</summary>
     public static void Reload(bool force = false)
     {
         var path = SettingsService.Current.ZapretPath;
@@ -41,28 +66,43 @@ public static class StrategyCatalog
         if (!force && _all.Count > 0 && string.Equals(_loadedFrom, path, StringComparison.OrdinalIgnoreCase))
             return;
 
-        var result = StrategyLoader.Load(path);
         _loadedFrom = path;
 
-        if (result.Strategies.Count > 0)
+        // 1) .cmd/.bat пресеты (zapret-win-bundle и сборки на его основе).
+        var fromFiles = StrategyLoader.Load(path);
+        if (fromFiles.Strategies.Count > 0)
         {
-            _all = result.Strategies;
+            _all = fromFiles.Strategies;
             IsFromFolder = true;
-            SourceDescription =
-                $"найдено в папке zapret: {result.Strategies.Count} пресетов";
-            if (result.Skipped.Count > 0)
-                SourceDescription += $" (пропущено без вызова winws2: {result.Skipped.Count})";
+            SourceDescription = $"пресеты из папки zapret: {fromFiles.Strategies.Count}";
+            if (fromFiles.Skipped.Count > 0)
+                SourceDescription += $" (пропущено без вызова winws2: {fromFiles.Skipped.Count})";
 
-            LogService.Info("Стратегии загружены из папки zapret: " + result.Strategies.Count);
+            LogService.Info("Стратегии загружены из .cmd-пресетов: " + fromFiles.Strategies.Count);
+            Changed?.Invoke(null, EventArgs.Empty);
+            return;
         }
-        else
+
+        // 2) Чистый zapret2: .cmd-файлов нет, стратегия живёт в config (NFQWS2_OPT).
+        var fromConfig = ZapretConfigLoader.Load(path);
+        if (fromConfig.Strategy is not null)
         {
-            _all = BuiltIn.ToList();
-            IsFromFolder = false;
-            SourceDescription = result.Error is not null
-                ? $"встроенные пресеты ({result.Error})"
-                : "встроенные пресеты: .cmd-файлов с вызовом winws2 в папке не найдено";
+            _all = new List<Strategy> { fromConfig.Strategy };
+            IsFromFolder = true;
+            SourceDescription = "конфиг zapret2: " + Path.GetFileName(fromConfig.SourceFile ?? "config") +
+                                " (NFQWS2_OPT) + " + StrategyMatrix.All.Count + " методов для подбора";
+
+            LogService.Info("Стратегия загружена из " + fromConfig.SourceFile);
+            Changed?.Invoke(null, EventArgs.Empty);
+            return;
         }
+
+        // 3) Ни пресетов, ни конфига — работаем от матрицы методов.
+        _all = StrategyMatrix.All.ToList();
+        IsFromFolder = false;
+        SourceDescription = $"матрица методов blockcheck2 ({StrategyMatrix.All.Count})";
+        if (fromConfig.Error is not null)
+            SourceDescription += $": {fromConfig.Error}";
 
         Changed?.Invoke(null, EventArgs.Empty);
     }
@@ -70,124 +110,7 @@ public static class StrategyCatalog
     public static Strategy? FindById(string? id)
     {
         if (string.IsNullOrEmpty(id)) return null;
-        return All.FirstOrDefault(s => s.Id == id);
-    }
-
-    /// <summary>
-    /// Запасной список на случай, если в папке zapret нет .cmd-пресетов.
-    /// Аргументы — из preset2_example.cmd, пути подставляет ZapretLocator.
-    /// </summary>
-    private static List<Strategy> BuildBuiltIn()
-    {
-        return new List<Strategy>
-        {
-            new()
-            {
-                Id = "auto_qq",
-                Name = "auto_qq (встроенный)",
-                Description = "Универсальный: TCP 80/443 + UDP 443 (QUIC).",
-                RecommendedFor = new() { "youtube", "discord", "instagram" },
-                Args = new()
-                {
-                    "--wf-tcp-out=80,443",
-                    "--lua-init=@<lua/zapret-lib.lua>",
-                    "--lua-init=@<lua/zapret-antidpi.lua>",
-                    "--blob=quic_google:@<files/fake/quic_initial_www_google_com.bin>",
-                    "--wf-raw-part=@<windivert.filter/windivert_part.discord_media.txt>",
-                    "--wf-raw-part=@<windivert.filter/windivert_part.stun.txt>",
-                    "--wf-raw-part=@<windivert.filter/windivert_part.wireguard.txt>",
-                    "--wf-raw-part=@<windivert.filter/windivert_part.quic_initial_ietf.txt>",
-                    "--filter-tcp=80", "--filter-l7=http",
-                    "--out-range=-d10",
-                    "--payload=http_req",
-                    "--lua-desync=fake:blob=fake_default_http:ip_autottl=-2,3-20:ip6_autottl=-2,3-20:tcp_md5",
-                    "--lua-desync=fakedsplit:ip_autottl=-2,3-20:ip6_autottl=-2,3-20:tcp_md5",
-                    "--new",
-                    "--filter-tcp=443", "--filter-l7=tls", "--hostlist=<files/list-youtube.txt>",
-                    "--out-range=-d10",
-                    "--payload=tls_client_hello",
-                    "--lua-desync=fake:blob=fake_default_tls:tcp_md5:repeats=11:tls_mod=rnd,dupsid,sni=www.google.com",
-                    "--lua-desync=multidisorder:pos=1,midsld",
-                    "--new",
-                    "--filter-tcp=443", "--filter-l7=tls",
-                    "--out-range=-d10",
-                    "--payload=tls_client_hello",
-                    "--lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000:repeats=6",
-                    "--lua-desync=multidisorder:pos=midsld",
-                    "--new",
-                    "--filter-udp=443", "--filter-l7=quic", "--hostlist=<files/list-youtube.txt>",
-                    "--payload=quic_initial",
-                    "--lua-desync=fake:blob=quic_google:repeats=11",
-                    "--new",
-                    "--filter-udp=443", "--filter-l7=quic",
-                    "--payload=quic_initial",
-                    "--lua-desync=fake:blob=fake_default_quic:repeats=11",
-                    "--new",
-                    "--filter-l7=wireguard,stun,discord",
-                    "--payload=wireguard_initiation,wireguard_cookie,stun,discord_ip_discovery",
-                    "--lua-desync=fake:blob=0x00000000000000000000000000000000:repeats=2",
-                },
-            },
-
-            new()
-            {
-                Id = "general_tcp",
-                Name = "general_tcp (встроенный)",
-                Description = "Универсальный TCP: fake + multidisorder, без UDP.",
-                RecommendedFor = new() { "youtube", "TCP/TLS" },
-                Args = new()
-                {
-                    "--wf-tcp-out=80,443",
-                    "--lua-init=@<lua/zapret-lib.lua>",
-                    "--lua-init=@<lua/zapret-antidpi.lua>",
-                    "--filter-tcp=443", "--filter-l7=tls",
-                    "--out-range=-d10",
-                    "--payload=tls_client_hello",
-                    "--lua-desync=fake:blob=fake_default_tls:tcp_md5:tcp_seq=-10000:repeats=6",
-                    "--lua-desync=multidisorder:pos=midsld",
-                    "--new",
-                    "--filter-tcp=80", "--filter-l7=http",
-                    "--out-range=-d10",
-                    "--payload=http_req",
-                    "--lua-desync=fake:blob=fake_default_http:tcp_md5",
-                },
-            },
-
-            new()
-            {
-                Id = "udp_fragment",
-                Name = "udp_fragment (встроенный)",
-                Description = "QUIC/HTTP3 с IP-фрагментацией.",
-                RecommendedFor = new() { "youtube", "UDP/QUIC" },
-                Args = new()
-                {
-                    "--wf-udp-out=443",
-                    "--lua-init=@<lua/zapret-lib.lua>",
-                    "--lua-init=@<lua/zapret-antidpi.lua>",
-                    "--filter-udp=443", "--filter-l7=quic",
-                    "--payload=quic_initial",
-                    "--lua-desync=send:ipfrag:ipfrag_pos_udp=8",
-                    "--lua-desync=drop",
-                },
-            },
-
-            new()
-            {
-                Id = "tls_fake_sni",
-                Name = "tls_fake_sni (встроенный)",
-                Description = "TLS с подменой SNI на www.google.com.",
-                RecommendedFor = new() { "youtube", "discord", "TCP/TLS" },
-                Args = new()
-                {
-                    "--wf-tcp-out=443",
-                    "--lua-init=@<lua/zapret-lib.lua>",
-                    "--lua-init=@<lua/zapret-antidpi.lua>",
-                    "--filter-tcp=443", "--filter-l7=tls",
-                    "--out-range=-d10",
-                    "--payload=tls_client_hello",
-                    "--lua-desync=fake:blob=fake_default_tls:tcp_md5:tls_mod=rnd,dupsid,sni=www.google.com",
-                },
-            },
-        };
+        return All.FirstOrDefault(s => s.Id == id)
+               ?? StrategyMatrix.All.FirstOrDefault(s => s.Id == id);
     }
 }
