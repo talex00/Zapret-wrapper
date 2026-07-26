@@ -84,11 +84,22 @@ public static class HostlistService
 
     /// <summary>
     /// Дописывает в list-general-user.txt те из хостов, которые не покрыты
-    /// существующими списками. Для zapret2 ничего не делает.
+    /// существующими списками. Для zapret2 списки не трогает, но DNS всё равно логирует.
     /// </summary>
     public static EnsureResult EnsureCovered(string? root, IEnumerable<string> hosts)
     {
         var result = new EnsureResult();
+
+        var wanted = hosts
+            .Where(h => !string.IsNullOrWhiteSpace(h))
+            .Select(h => Normalize(h))
+            .Where(h => h.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Справочно в журнал: при подмене DNS ни одна стратегия не заработает,
+        // и без этой строчки отличить такой случай от сломанного обхода невозможно.
+        Diagnostics.LogDns(wanted);
 
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
         {
@@ -111,13 +122,6 @@ public static class HostlistService
         {
             var included = ReadEntries(listsDir, includeLists: true);
             var excluded = ReadEntries(listsDir, includeLists: false);
-
-            var wanted = hosts
-                .Where(h => !string.IsNullOrWhiteSpace(h))
-                .Select(h => Normalize(h))
-                .Where(h => h.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
 
             var missing = new List<string>();
             foreach (var host in wanted)
