@@ -4,117 +4,119 @@
 
     <!--
         Прогрессивное раскрытие: на экране одновременно живёт только тот шаг,
-        для которого уже есть данные. Пока папка zapret не выбрана, ни списка
-        стратегий, ни кнопки запуска, ни журнала не существует.
+        для которого уже есть данные.
 
-        Порядок приоритетов сознательный: главный сценарий — «знаю стратегию,
-        хочу включить», поэтому запуск идёт первым и акцентной кнопкой, а
-        автоподбор — вторичным действием ниже.
+        Экран сознательно узкий (460) и вертикально отцентрован: короткий блок,
+        растянутый на всю ширину окна, читается как «недоделанная страница»,
+        а тот же блок по центру — как законченная карточка.
+
+        Текста ровно столько, сколько нужно для решения. Всё объясняющее
+        (описание стратегии, источник, аргументы, журнал) — в «Подробностях».
     -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel MaxWidth="640"
+        <StackPanel MaxWidth="460"
                     HorizontalAlignment="Center"
-                    Margin="34,32,34,36">
+                    VerticalAlignment="Center"
+                    Margin="24,18,24,18">
 
             <!-- ШАГ 1: пока нет валидной папки — только она. -->
             <Border x:Name="PathCard"
                     Style="{StaticResource CardBorderStyle}"
-                    Padding="30">
+                    Padding="20">
                 <StackPanel>
                     <TextBlock Text="Укажите папку zapret"
-                               Style="{StaticResource TextCardTitleStyle}" />
+                               Style="{StaticResource TextCardTitleStyle}"
+                               Margin="0,0,0,4" />
                     <TextBlock Style="{StaticResource TextMutedStyle}"
                                TextWrapping="Wrap"
-                               Text="Подойдёт распакованный архив zapret-discord-youtube или zapret2. Сборку и список стратегий программа определит сама." />
+                               Text="Распакованный zapret-discord-youtube или zapret2." />
 
                     <Button Content="Выбрать папку…"
                             Style="{StaticResource AccentButtonStyle}"
                             HorizontalAlignment="Left"
-                            MinHeight="40"
-                            Margin="0,22,0,0"
+                            Margin="0,14,0,0"
                             Click="ChoosePath_Click" />
 
                     <TextBlock x:Name="PathText"
                                Style="{StaticResource TextSubtleStyle}"
                                TextWrapping="Wrap"
-                               Margin="0,14,0,0" />
+                               Visibility="Collapsed"
+                               Margin="0,10,0,0" />
                     <TextBlock x:Name="PathProblemText"
                                Foreground="{DynamicResource DangerBrush}"
                                TextWrapping="Wrap"
                                Visibility="Collapsed"
-                               Margin="0,8,0,0" />
+                               Margin="0,6,0,0" />
                 </StackPanel>
             </Border>
 
-            <!-- ШАГ 2: папка есть — появляется запуск. Главное действие. -->
+            <!-- ШАГ 2: папка есть — стратегия и запуск. Главное действие. -->
             <Border x:Name="LaunchCard"
                     Style="{StaticResource CardBorderStyle}"
-                    Padding="30"
+                    Padding="20"
                     Visibility="Collapsed">
                 <StackPanel>
                     <TextBlock x:Name="DetectedText"
-                               Style="{StaticResource TextCardTitleStyle}"
-                               TextWrapping="Wrap" />
-
-                    <TextBlock Text="Стратегия обхода"
-                               Style="{StaticResource TextLabelStyle}" />
-                    <ComboBox x:Name="StrategyCombo"
-                              DisplayMemberPath="Name"
-                              MinHeight="40"
-                              SelectionChanged="StrategyCombo_SelectionChanged" />
-
-                    <TextBlock x:Name="StrategyDescriptionText"
                                Style="{StaticResource TextMutedStyle}"
                                TextWrapping="Wrap"
-                               Margin="0,10,0,0" />
+                               Margin="0,0,0,10" />
+
+                    <ComboBox x:Name="StrategyCombo"
+                              DisplayMemberPath="Name"
+                              MinHeight="38"
+                              SelectionChanged="StrategyCombo_SelectionChanged" />
 
                     <Button x:Name="ActionButton"
                             Content="▶  Запустить обход"
                             Style="{StaticResource AccentButtonStyle}"
                             FontSize="14"
-                            MinHeight="48"
-                            Margin="0,22,0,0"
+                            MinHeight="46"
+                            Margin="0,12,0,0"
                             Click="Action_Click" />
 
                     <TextBlock x:Name="StateText"
                                Style="{StaticResource TextMutedStyle}"
                                TextWrapping="Wrap"
-                               Margin="0,12,0,0" />
-                </StackPanel>
-            </Border>
+                               Visibility="Collapsed"
+                               Margin="0,10,0,0" />
 
-            <!-- ШАГ 3: подстраховка для тех, кто не знает, что выбрать. Вторично. -->
-            <Border x:Name="AutoPickCard"
-                    Style="{StaticResource CardBorderStyle}"
-                    Padding="30,24"
-                    Margin="0,16,0,0"
-                    Visibility="Collapsed">
-                <StackPanel>
-                    <TextBlock Text="Не знаете, какая стратегия подойдёт?"
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap" />
-                    <TextBlock x:Name="BestHintText"
-                               Style="{StaticResource TextMutedStyle}"
-                               TextWrapping="Wrap"
-                               Margin="0,6,0,0" />
-                    <Button x:Name="AutoPickButton"
-                            Content="Подобрать автоматически"
-                            HorizontalAlignment="Left"
-                            MinHeight="38"
-                            Margin="0,16,0,0"
-                            Click="AutoPick_Click" />
+                    <!-- Подстраховка для тех, кто не знает, что выбрать. Строкой, не карточкой. -->
+                    <StackPanel x:Name="AutoPickCard"
+                                Visibility="Collapsed"
+                                Margin="0,12,0,0">
+                        <Border Background="{DynamicResource BorderBrush}" Height="1" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="Не знаете, что выбрать?"
+                                       Style="{StaticResource TextMutedStyle}"
+                                       VerticalAlignment="Center" />
+                            <Button x:Name="AutoPickButton"
+                                    Content="Подобрать автоматически"
+                                    Style="{StaticResource SubtleButtonStyle}"
+                                    Margin="4,0,0,0"
+                                    Click="AutoPick_Click" />
+                        </StackPanel>
+                        <TextBlock x:Name="BestHintText"
+                                   Style="{StaticResource TextSubtleStyle}"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   Margin="0,2,0,0" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
             <!-- Всё остальное — по требованию. -->
             <Expander x:Name="DetailsExpander"
                       Header="Подробности"
-                      Margin="0,18,0,0"
+                      Margin="0,10,0,0"
                       Visibility="Collapsed">
-                <StackPanel Margin="2,14,2,0">
-                    <TextBlock x:Name="SourceText"
+                <StackPanel Margin="2,10,2,0">
+                    <TextBlock x:Name="StrategyDescriptionText"
                                Style="{StaticResource TextMutedStyle}"
                                TextWrapping="Wrap" />
+                    <TextBlock x:Name="SourceText"
+                               Style="{StaticResource TextMutedStyle}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
                     <TextBlock x:Name="PathDetailText"
                                Style="{StaticResource TextSubtleStyle}"
                                TextWrapping="Wrap"
@@ -122,14 +124,14 @@
 
                     <TextBlock Text="Аргументы winws"
                                Style="{StaticResource TextLabelStyle}"
-                               Margin="0,14,0,0" />
+                               Margin="0,12,0,0" />
                     <TextBlock x:Name="ArgsText"
                                FontFamily="Consolas"
                                FontSize="12"
                                TextWrapping="Wrap"
                                Foreground="{DynamicResource TextMutedBrush}" />
 
-                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <Button Content="Изменить папку"
                                 Style="{StaticResource SubtleButtonStyle}"
                                 Margin="0,0,8,0"
@@ -139,18 +141,16 @@
                                 Click="ClearLog_Click" />
                     </StackPanel>
 
-                    <TextBlock Text="Журнал событий"
-                               Style="{StaticResource TextLabelStyle}"
-                               Margin="0,18,0,0" />
                     <Border Background="{DynamicResource SurfaceAltBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="4"
-                            Padding="12">
+                            Margin="0,10,0,0"
+                            Padding="10">
                         <ScrollViewer x:Name="LogScroll"
                                       VerticalScrollBarVisibility="Auto"
                                       Background="Transparent"
-                                      MaxHeight="240">
+                                      MaxHeight="200">
                             <ItemsControl x:Name="LogList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>

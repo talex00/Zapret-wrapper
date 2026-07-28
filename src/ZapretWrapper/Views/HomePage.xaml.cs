@@ -18,8 +18,10 @@ namespace ZapretWrapper.Views;
 ///   папка валидна    → стратегия + акцентная кнопка запуска, ниже автоподбор;
 ///   обход работает   → состояние и остановка, автоподбор скрыт (он всё равно убьёт winws).
 ///
-/// Детали (источник стратегий, аргументы, журнал) не исчезли — они переехали
-/// под «Подробности», потому что нужны при разборе проблем, а не при каждом запуске.
+/// Тексты держим короткими: подпись, которую пользователь читает один раз в жизни,
+/// он потом ещё сто раз пролистывает глазами. Всё объясняющее живёт в «Подробностях».
+/// Пустые подписи не просто очищаются, а прячутся — иначе пустая строка
+/// продолжает занимать высоту и карточка выглядит дырявой.
 /// </summary>
 public partial class HomePage : UserControl
 {
@@ -85,20 +87,16 @@ public partial class HomePage : UserControl
         {
             PathCard.Visibility = Visibility.Visible;
             LaunchCard.Visibility = Visibility.Collapsed;
-            AutoPickCard.Visibility = Visibility.Collapsed;
             DetailsExpander.Visibility = string.IsNullOrWhiteSpace(path)
                 ? Visibility.Collapsed
                 : Visibility.Visible;
 
-            PathText.Text = string.IsNullOrWhiteSpace(path) ? "" : path;
+            SetText(PathText, string.IsNullOrWhiteSpace(path) ? "" : path);
 
             var problem = layout.Error
                 ?? (layout.Missing.Count > 0 ? "Не хватает файлов: " + string.Join(", ", layout.Missing) : null);
 
-            PathProblemText.Text = problem ?? "";
-            PathProblemText.Visibility = string.IsNullOrWhiteSpace(path) || problem is null
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+            SetText(PathProblemText, string.IsNullOrWhiteSpace(path) ? "" : problem ?? "");
             return;
         }
 
@@ -115,8 +113,8 @@ public partial class HomePage : UserControl
         DetectedText.Text = running
             ? "Обход работает"
             : hasStrategies
-                ? $"✓ {layout.Label} · стратегий: {StrategyCatalog.All.Count}"
-                : $"✓ {layout.Label}, но стратегий не найдено";
+                ? $"{layout.Label} · стратегий: {StrategyCatalog.All.Count}"
+                : $"{layout.Label} · стратегий не найдено";
 
         StrategyCombo.IsEnabled = !running && hasStrategies;
         ActionButton.Content = running ? "■  Остановить обход" : "▶  Запустить обход";
@@ -125,25 +123,30 @@ public partial class HomePage : UserControl
         if (running)
         {
             var current = runner?.CurrentStrategy;
-            StateText.Text = current is null
-                ? "Повторное нажатие остановит winws."
-                : $"Стратегия «{current.Name}». Повторное нажатие остановит winws.";
+            SetText(StateText, current is null ? "" : $"Стратегия «{current.Name}»");
         }
         else if (!hasStrategies)
         {
-            StateText.Text = "В папке нет ни пресетов, ни general*.bat — проверьте, что распакован архив релиза.";
+            SetText(StateText, "В папке нет ни пресетов, ни general*.bat.");
         }
         else if (!string.IsNullOrEmpty(runner?.LastError))
         {
-            StateText.Text = "Последняя ошибка: " + runner!.LastError;
+            SetText(StateText, "Ошибка: " + runner!.LastError);
         }
         else
         {
-            StateText.Text = "";
+            SetText(StateText, "");
         }
 
         UpdateArgs();
         UpdateBestHint();
+    }
+
+    /// <summary>Пустой текст прячет сам TextBlock: иначе пустая строка держит высоту.</summary>
+    private static void SetText(TextBlock target, string? text)
+    {
+        target.Text = text ?? "";
+        target.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void UpdateDescription()
@@ -163,9 +166,9 @@ public partial class HomePage : UserControl
     private void UpdateBestHint()
     {
         var best = TestingPage.LastBestStrategyName;
-        BestHintText.Text = string.IsNullOrEmpty(best)
-            ? "Программа сама проверит каждую стратегию реальными запросами и выберет рабочую. Обход на время проверки будет остановлен."
-            : $"По итогам последней проверки лучшей оказалась «{best}» — она уже выбрана выше.";
+        SetText(BestHintText, string.IsNullOrEmpty(best)
+            ? ""
+            : $"Прошлая проверка выбрала «{best}».");
     }
 
     /// <summary>Выбор папки прямо на главной: раньше за этим приходилось идти в Настройки.</summary>
