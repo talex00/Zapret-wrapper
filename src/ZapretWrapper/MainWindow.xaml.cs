@@ -10,6 +10,7 @@ namespace ZapretWrapper;
 public partial class MainWindow : Window
 {
     private bool _initialized;
+    private bool _advanced;
     private readonly Dictionary<string, FrameworkElement> _pageCache = new();
 
     public MainWindow()
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
             runner.StateChanged += (_, _) => RefreshStatus();
 
         NavigateTo("home");
+        RefreshStatus();
         Dispatcher.BeginInvoke(new System.Action(ResizeCurrentPage),
             System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
@@ -91,6 +93,56 @@ public partial class MainWindow : Window
         }
 
         PageHost.Content = target;
+
+        // В простом режиме бокового меню нет, поэтому единственный путь назад —
+        // кнопка в шапке. На главной она была бы бессмысленной.
+        BackButton.Visibility = page == "home" ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>Переключатель «простой / расширенный»: аналог раскрытия окна по мере надобности.</summary>
+    private void AdvancedToggle_Click(object sender, RoutedEventArgs e) => SetAdvanced(!_advanced);
+
+    private void SetAdvanced(bool on)
+    {
+        _advanced = on;
+
+        Sidebar.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        SidebarColumn.Width = on ? new GridLength(220) : new GridLength(0);
+        AdvancedButton.Content = on ? "Простой режим" : "Расширенный режим";
+
+        if (on)
+        {
+            // Таблице тестирования и логам нужно место — окно растём только здесь.
+            if (Width < 1180) Width = 1240;
+            if (Height < 760) Height = 820;
+            return;
+        }
+
+        NavHome.IsChecked = true;
+        NavigateTo("home");
+    }
+
+    private void Back_Click(object sender, RoutedEventArgs e)
+    {
+        NavHome.IsChecked = true;
+        NavigateTo("home");
+    }
+
+    /// <summary>
+    /// Автоподбор с главной страницы: переходим на «Тестирование» и сразу стартуем прогон,
+    /// чтобы вторичный сценарий не требовал изучения меню.
+    /// </summary>
+    public void GoToAutoPick()
+    {
+        if (Width < 1080) Width = 1140;
+        if (Height < 720) Height = 800;
+
+        NavTesting.IsChecked = true;
+        NavigateTo("testing");
+
+        if (PageHost.Content is TestingPage tp)
+            Dispatcher.BeginInvoke(new System.Action(tp.StartAutoPick),
+                System.Windows.Threading.DispatcherPriority.ContextIdle);
     }
 
     /// <summary>
@@ -113,15 +165,23 @@ public partial class MainWindow : Window
             StatusDot.Fill = (System.Windows.Media.Brush)FindResource("SuccessBrush");
             StatusText.Text = "Работает";
             StatusText.Foreground = (System.Windows.Media.Brush)FindResource("SuccessBrush");
-            var running = Models.StrategyCatalog.FindById(SettingsService.Current.SelectedStrategyId);
-            ProfileText.Text = running?.Name ?? "—";
+
+            var running = runner.CurrentStrategy
+                ?? Models.StrategyCatalog.FindById(SettingsService.Current.SelectedStrategyId);
+            ProfileText.Text = running is null ? "" : "· " + running.Name;
+            ProfileText.Visibility = running is null ? Visibility.Collapsed : Visibility.Visible;
         }
         else
         {
             StatusDot.Fill = (System.Windows.Media.Brush)FindResource("DangerBrush");
             StatusText.Text = "Остановлено";
             StatusText.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
-            ProfileText.Text = "Без обхода";
+
+            // Имя профиля в остановленном состоянии — лишний шум.
+            ProfileText.Text = "";
+            ProfileText.Visibility = Visibility.Collapsed;
         }
+
+        if (PageHost.Content is HomePage hp) hp.RefreshFlow();
     }
 }
