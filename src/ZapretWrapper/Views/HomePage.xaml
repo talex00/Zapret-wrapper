@@ -1,70 +1,147 @@
 <UserControl x:Class="ZapretWrapper.Views.HomePage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-        <StackPanel>
 
-            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+    <!--
+        Прогрессивное раскрытие: на экране одновременно живёт только тот шаг,
+        для которого уже есть данные. Пока папка zapret не выбрана, ни списка
+        стратегий, ни кнопки запуска, ни журнала не существует.
+
+        Порядок приоритетов сознательный: главный сценарий — «знаю стратегию,
+        хочу включить», поэтому запуск идёт первым и акцентной кнопкой, а
+        автоподбор — вторичным действием ниже.
+    -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="640"
+                    HorizontalAlignment="Center"
+                    Margin="34,32,34,36">
+
+            <!-- ШАГ 1: пока нет валидной папки — только она. -->
+            <Border x:Name="PathCard"
+                    Style="{StaticResource CardBorderStyle}"
+                    Padding="30">
                 <StackPanel>
-                    <TextBlock Text="Быстрый запуск"
+                    <TextBlock Text="Укажите папку zapret"
                                Style="{StaticResource TextCardTitleStyle}" />
+                    <TextBlock Style="{StaticResource TextMutedStyle}"
+                               TextWrapping="Wrap"
+                               Text="Подойдёт распакованный архив zapret-discord-youtube или zapret2. Сборку и список стратегий программа определит сама." />
 
-                    <TextBlock Text="Выберите стратегию:"
+                    <Button Content="Выбрать папку…"
+                            Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Left"
+                            MinHeight="40"
+                            Margin="0,22,0,0"
+                            Click="ChoosePath_Click" />
+
+                    <TextBlock x:Name="PathText"
+                               Style="{StaticResource TextSubtleStyle}"
+                               TextWrapping="Wrap"
+                               Margin="0,14,0,0" />
+                    <TextBlock x:Name="PathProblemText"
+                               Foreground="{DynamicResource DangerBrush}"
+                               TextWrapping="Wrap"
+                               Visibility="Collapsed"
+                               Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- ШАГ 2: папка есть — появляется запуск. Главное действие. -->
+            <Border x:Name="LaunchCard"
+                    Style="{StaticResource CardBorderStyle}"
+                    Padding="30"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock x:Name="DetectedText"
+                               Style="{StaticResource TextCardTitleStyle}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="Стратегия обхода"
                                Style="{StaticResource TextLabelStyle}" />
                     <ComboBox x:Name="StrategyCombo"
                               DisplayMemberPath="Name"
+                              MinHeight="40"
                               SelectionChanged="StrategyCombo_SelectionChanged" />
-
-                    <TextBlock x:Name="SourceText"
-                               Style="{StaticResource TextMutedStyle}"
-                               TextWrapping="Wrap"
-                               Margin="0,8,0,0" />
 
                     <TextBlock x:Name="StrategyDescriptionText"
                                Style="{StaticResource TextMutedStyle}"
                                TextWrapping="Wrap"
-                               Margin="0,4,0,0" />
+                               Margin="0,10,0,0" />
 
-                    <!-- Одна кнопка вместо двух: меняет роль по состоянию winws2. -->
                     <Button x:Name="ActionButton"
                             Content="▶  Запустить обход"
-                            Click="Action_Click"
-                            Margin="0,16,0,0" />
+                            Style="{StaticResource AccentButtonStyle}"
+                            FontSize="14"
+                            MinHeight="48"
+                            Margin="0,22,0,0"
+                            Click="Action_Click" />
 
                     <TextBlock x:Name="StateText"
                                Style="{StaticResource TextMutedStyle}"
                                TextWrapping="Wrap"
-                               Margin="0,10,0,0" />
+                               Margin="0,12,0,0" />
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,16">
+            <!-- ШАГ 3: подстраховка для тех, кто не знает, что выбрать. Вторично. -->
+            <Border x:Name="AutoPickCard"
+                    Style="{StaticResource CardBorderStyle}"
+                    Padding="30,24"
+                    Margin="0,16,0,0"
+                    Visibility="Collapsed">
                 <StackPanel>
-                    <TextBlock Text="Подбор стратегии"
-                               Style="{StaticResource TextCardTitleStyle}" />
+                    <TextBlock Text="Не знаете, какая стратегия подойдёт?"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
                     <TextBlock x:Name="BestHintText"
                                Style="{StaticResource TextMutedStyle}"
-                               TextWrapping="Wrap" />
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                    <Button x:Name="AutoPickButton"
+                            Content="Подобрать автоматически"
+                            HorizontalAlignment="Left"
+                            MinHeight="38"
+                            Margin="0,16,0,0"
+                            Click="AutoPick_Click" />
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource CardBorderStyle}">
-                <DockPanel LastChildFill="True">
-                    <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   Text="Журнал событий"
-                                   Style="{StaticResource TextCardTitleStyle}"
-                                   Margin="0" />
-                        <Button Grid.Column="1"
-                                Style="{StaticResource SubtleButtonStyle}"
-                                Content="Очистить"
-                                Click="ClearLog_Click" />
-                    </Grid>
+            <!-- Всё остальное — по требованию. -->
+            <Expander x:Name="DetailsExpander"
+                      Header="Подробности"
+                      Margin="0,18,0,0"
+                      Visibility="Collapsed">
+                <StackPanel Margin="2,14,2,0">
+                    <TextBlock x:Name="SourceText"
+                               Style="{StaticResource TextMutedStyle}"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="PathDetailText"
+                               Style="{StaticResource TextSubtleStyle}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
 
+                    <TextBlock Text="Аргументы winws"
+                               Style="{StaticResource TextLabelStyle}"
+                               Margin="0,14,0,0" />
+                    <TextBlock x:Name="ArgsText"
+                               FontFamily="Consolas"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button Content="Изменить папку"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                Margin="0,0,8,0"
+                                Click="ChoosePath_Click" />
+                        <Button Content="Очистить журнал"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                Click="ClearLog_Click" />
+                    </StackPanel>
+
+                    <TextBlock Text="Журнал событий"
+                               Style="{StaticResource TextLabelStyle}"
+                               Margin="0,18,0,0" />
                     <Border Background="{DynamicResource SurfaceAltBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
@@ -73,7 +150,7 @@
                         <ScrollViewer x:Name="LogScroll"
                                       VerticalScrollBarVisibility="Auto"
                                       Background="Transparent"
-                                      MaxHeight="260">
+                                      MaxHeight="240">
                             <ItemsControl x:Name="LogList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -87,8 +164,8 @@
                             </ItemsControl>
                         </ScrollViewer>
                     </Border>
-                </DockPanel>
-            </Border>
+                </StackPanel>
+            </Expander>
 
         </StackPanel>
     </ScrollViewer>
