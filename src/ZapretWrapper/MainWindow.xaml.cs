@@ -9,6 +9,13 @@ namespace ZapretWrapper;
 
 public partial class MainWindow : Window
 {
+    /// <summary>
+    /// Размер окна в простом режиме — ровно под карточку главной.
+    /// Должен совпадать с Width/Height в MainWindow.xaml.
+    /// </summary>
+    private const double SimpleWidth = 480;
+    private const double SimpleHeight = 420;
+
     private bool _initialized;
     private bool _advanced;
     private readonly Dictionary<string, FrameworkElement> _pageCache = new();
@@ -41,6 +48,27 @@ public partial class MainWindow : Window
     {
         if (PageHost.Content is HomePage hp)
             hp.HandleResize(ActualWidth);
+    }
+
+    /// <summary>
+    /// Возвращает окно к компактному размеру. Без этого окно, один раз раздутое
+    /// расширенным режимом или автоподбором, таким и оставалось — и главная снова
+    /// плавала бы карточкой посреди пустого фона.
+    /// </summary>
+    private void ApplySimpleSize()
+    {
+        if (_advanced) return;
+
+        // Развёрнутое на весь экран окно не трогаем: это явный выбор пользователя.
+        if (WindowState != WindowState.Normal) return;
+
+        Width = SimpleWidth;
+        Height = SimpleHeight;
+
+        // После сжатия окно иначе остаётся прижатым к левому верхнему углу бывшего.
+        var area = SystemParameters.WorkArea;
+        Left = area.Left + (area.Width - Width) / 2;
+        Top = area.Top + (area.Height - Height) / 2;
     }
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
@@ -120,12 +148,16 @@ public partial class MainWindow : Window
 
         NavHome.IsChecked = true;
         NavigateTo("home");
+        ApplySimpleSize();
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
         NavHome.IsChecked = true;
         NavigateTo("home");
+
+        // Возврат с автоподбора: окно было раздвинуто под таблицу результатов.
+        ApplySimpleSize();
     }
 
     /// <summary>
