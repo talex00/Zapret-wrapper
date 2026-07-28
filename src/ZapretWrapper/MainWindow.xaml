@@ -15,6 +15,10 @@
         Боковое меню и служебные страницы (стратегии, тестирование, логи, настройки)
         нужны меньшинству, поэтому живут за переключателем «Расширенный режим»,
         а не занимают 220 px на старте.
+
+        В шапке нет ни иконки, ни названия: и то и другое уже нарисовано системой
+        в заголовке окна прямо над ней, дублировать их незачем. Шапка отвечает
+        только за состояние обхода, возврат назад и переключение режима.
     -->
     <Grid>
         <Grid.ColumnDefinitions>
@@ -101,12 +105,12 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Компактная шапка: название, состояние, переключатель режима. -->
+            <!-- Тонкая полоса состояния вместо второй «шапки приложения». -->
             <Border Grid.Row="0"
                     Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="0,0,0,1"
-                    Padding="20,10">
+                    Padding="14,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -114,29 +118,19 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Image Source="{StaticResource AppLogo}"
-                               Width="20" Height="24"
-                               VerticalAlignment="Center"
-                               SnapsToDevicePixels="False" />
-                        <TextBlock Text="Zapret Wrapper"
-                                   Margin="10,0,0,0"
-                                   FontSize="15"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center" />
-                        <Button x:Name="BackButton"
-                                Content="←  На главную"
-                                Style="{StaticResource SubtleButtonStyle}"
-                                Margin="16,0,0,0"
-                                Visibility="Collapsed"
-                                Click="Back_Click" />
-                    </StackPanel>
+                    <Button x:Name="BackButton"
+                            Grid.Column="0"
+                            Content="←  На главную"
+                            Style="{StaticResource SubtleButtonStyle}"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed"
+                            Click="Back_Click" />
 
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
-                                Margin="0,0,16,0">
+                                Margin="0,0,12,0">
                         <Ellipse x:Name="StatusDot" Width="8" Height="8"
                                  Fill="{DynamicResource DangerBrush}"
                                  VerticalAlignment="Center" />
