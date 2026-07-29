@@ -20,6 +20,11 @@
         карточку: прежние 880x640 оставляли вокруг содержимого пустое серое поле.
         Расширенный режим раздвигает окно сам (см. SetAdvanced).
 
+        Серого фона в простом режиме нет вовсе: когда на экране один блок, фону
+        нечего от него отделять, и он читается как лишняя рамка вокруг карточки.
+        Поэтому Background страницы и полосы состояния переключается в ApplyChrome():
+        простой режим — SurfaceBrush (полотно карточки), расширенный — как было.
+
         В шапке нет ни иконки, ни названия: и то и другое уже нарисовано системой
         в заголовке окна прямо над ней, дублировать их незачем. Шапка отвечает
         только за состояние обхода, возврат назад и переключение режима.
@@ -109,11 +114,15 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Тонкая полоса состояния вместо второй «шапки приложения». -->
-            <Border Grid.Row="0"
-                    Background="{DynamicResource SidebarBrush}"
+            <!--
+                Тонкая полоса состояния вместо второй «шапки приложения».
+                Background и нижнюю линию задаёт ApplyChrome(): в простом режиме
+                полоса сливается с содержимым, в расширенном — отделяется от страниц.
+            -->
+            <Border x:Name="HeaderBar"
+                    Grid.Row="0"
                     BorderBrush="{DynamicResource BorderBrush}"
-                    BorderThickness="0,0,0,1"
+                    BorderThickness="0"
                     Padding="14,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -160,12 +169,11 @@
                 </Grid>
             </Border>
 
-            <!-- Page host -->
+            <!-- Page host. Background задаёт ApplyChrome(), см. комментарий выше. -->
             <ContentControl x:Name="PageHost"
                             Grid.Row="1"
                             HorizontalContentAlignment="Stretch"
-                            VerticalContentAlignment="Stretch"
-                            Background="{DynamicResource BackgroundBrush}" />
+                            VerticalContentAlignment="Stretch" />
         </Grid>
     </Grid>
 </Window>
