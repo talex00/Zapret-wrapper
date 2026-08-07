@@ -27,7 +27,14 @@ public partial class MainWindow : Window
 
         SourceInitialized += (_, _) => WindowChrome.Apply(this);
         Activated += (_, _) => WindowChrome.Apply(this);
-        ThemeManager.ThemeChanged += (_, _) => WindowChrome.Apply(this);
+        ThemeManager.ThemeChanged += (_, _) =>
+        {
+            WindowChrome.Apply(this);
+
+            // ApplyChrome записывает кисти локальными значениями, а не через DynamicResource,
+            // так что смена темы сама их не подхватит — пересчитываем вручную.
+            ApplyChrome();
+        };
 
         SizeChanged += (_, e) =>
         {
@@ -39,6 +46,7 @@ public partial class MainWindow : Window
             runner.StateChanged += (_, _) => RefreshStatus();
 
         NavigateTo("home");
+        ApplyChrome();
         RefreshStatus();
         Dispatcher.BeginInvoke(new System.Action(ResizeCurrentPage),
             System.Windows.Threading.DispatcherPriority.ContextIdle);
@@ -48,6 +56,36 @@ public partial class MainWindow : Window
     {
         if (PageHost.Content is HomePage hp)
             hp.HandleResize(ActualWidth);
+    }
+
+    /// <summary>
+    /// В простом режиме окно содержит один блок, и серое полотно под ним только
+    /// мешает: видно не содержимое окна, а карточка, лежащая на фоне. Поэтому там
+    /// страница и полоса состояния красятся в цвет самой карточки, а карточка теряет
+    /// рамку и отступы (SetChromeless).
+    ///
+    /// В расширенном режиме всё как было: там блоков много, и фон с границами
+    /// разделяют их между собой.
+    /// </summary>
+    private void ApplyChrome()
+    {
+        var surface = (System.Windows.Media.Brush)FindResource("SurfaceBrush");
+
+        PageHost.Background = _advanced
+            ? (System.Windows.Media.Brush)FindResource("BackgroundBrush")
+            : surface;
+
+        HeaderBar.Background = _advanced
+            ? (System.Windows.Media.Brush)FindResource("SidebarBrush")
+            : surface;
+
+        // Разделитель под шапкой нужен только там, где она отделяет себя от другого фона.
+        HeaderBar.BorderThickness = _advanced
+            ? new Thickness(0, 0, 0, 1)
+            : new Thickness(0);
+
+        if (PageHost.Content is HomePage hp)
+            hp.SetChromeless(!_advanced);
     }
 
     /// <summary>
@@ -111,6 +149,10 @@ public partial class MainWindow : Window
         {
             case HomePage hp:
                 hp.RefreshFromSettings();
+
+                // Страница кешируется и переживает переключения режима, так что вид
+                // карточек нужно задавать каждый раз, а не один раз при создании.
+                hp.SetChromeless(!_advanced);
                 break;
             case TestingPage tp:
                 tp.RefreshFromSettings();
@@ -143,11 +185,13 @@ public partial class MainWindow : Window
             // Таблице тестирования и логам нужно место — окно растём только здесь.
             if (Width < 1180) Width = 1240;
             if (Height < 760) Height = 820;
+            ApplyChrome();
             return;
         }
 
         NavHome.IsChecked = true;
         NavigateTo("home");
+        ApplyChrome();
         ApplySimpleSize();
     }
 
